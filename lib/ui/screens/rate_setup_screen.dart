@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
+import '../../branding.dart';
 import '../../core/money.dart';
 import '../../models/gold_rates.dart';
 import '../../models/purity.dart';
@@ -110,7 +111,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     final rates = AppScope.of(context).rates;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.firstRun ? 'Welcome' : 'Gold Rate Settings'),
+        title: Text(
+          widget.firstRun ? 'Welcome to ${Brand.name}' : 'Gold Rate Settings',
+        ),
         automaticallyImplyLeading: !widget.firstRun,
       ),
       body: SafeArea(

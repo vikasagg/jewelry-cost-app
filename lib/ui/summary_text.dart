@@ -1,3 +1,4 @@
+import '../branding.dart';
 import '../core/money.dart';
 import '../models/gold_rates.dart';
 import '../models/jewellery_input.dart';
@@ -7,7 +8,8 @@ import 'widgets/common.dart';
 /// Plain-text cost summary for sharing/exporting.
 String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
   final b = StringBuffer()
-    ..writeln('JEWELLERY COST SUMMARY')
+    ..writeln(Brand.name.toUpperCase())
+    ..writeln('Jewellery Cost Estimate')
     ..writeln('Estimate only — not a tax invoice')
     ..writeln('');
   if (i.tagNumber != null) b.writeln('Tag no: ${i.tagNumber}');

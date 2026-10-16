@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jewellery_cost/app_state.dart';
 import 'package:jewellery_cost/data/key_value_store.dart';
 import 'package:jewellery_cost/main.dart';
+import 'package:jewellery_cost/models/gold_rates.dart';
 import 'package:jewellery_cost/models/purity.dart';
 import 'package:jewellery_cost/ocr/tag_parser.dart';
 import 'package:jewellery_cost/ui/screens/details_form_screen.dart';
@@ -91,7 +92,8 @@ void main() {
     expect(find.byKey(const Key('wastageMethod')), findsNothing);
     await tapKey(t, 'calculate');
 
-    expect(find.text('Jewellery Cost Summary'), findsOneWidget);
+    expect(find.text('Damiyaas Jewelers'), findsOneWidget);
+    expect(find.textContaining('Jewellery Cost Estimate'), findsOneWidget);
     expect(find.byKey(const Key('total')), findsOneWidget);
     expect(
       (t.widget(find.byKey(const Key('total'))) as Text).data,
@@ -134,5 +136,46 @@ void main() {
     await t.tap(find.text('Confirm').first);
     await t.pumpAndSettle();
     expect(find.text('Calculate Cost'), findsOneWidget);
+  });
+
+  testWidgets('scanned real tag: FANCY CUT stays a diamond in the estimate', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1080, 7000);
+    t.view.devicePixelRatio = 2.6;
+    addTearDown(t.view.reset);
+
+    final state = AppState(MemoryStore());
+    await state.saveRates(
+      GoldRates(
+        perGram: const {
+          Purity.k14: 4100,
+          Purity.k18: 5300,
+          Purity.k22: 6450,
+          Purity.k24: 7000,
+        },
+        updatedAt: DateTime(2026, 10, 1),
+        quotedPerGrams: 10,
+      ),
+    );
+    await t.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: buildTheme(),
+          home: DetailsFormScreen(
+            parsed: const TagParser().parse(
+              '4 G.Wt :6.410 14K :\n© N.Wt:5.886 :\n\'  DIA\\0.38\\700 |\n'
+              '| DIA\\0.11\\750\n~#NEANCY CUT) 2.13\\850 |\n',
+            ),
+          ),
+        ),
+      ),
+    );
+    await enter(t, 'makingValue', '1200');
+    await tapKey(t, 'calculate');
+    expect(find.text('Diamond value'), findsOneWidget);
+    expect(find.text('Stone value'), findsNothing);
+    expect(find.text('₹2,15,900.00'), findsOneWidget); // 26,600+8,250+1,81,050
   });
 }

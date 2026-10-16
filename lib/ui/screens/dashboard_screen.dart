@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
+import '../../branding.dart';
 import '../../core/money.dart';
 import '../../models/purity.dart';
 import '../theme.dart';
@@ -23,7 +24,7 @@ class DashboardScreen extends StatelessWidget {
     final historyCount = state.history.all().length;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Jewellery Cost'),
+        title: const BrandHeader(size: 34),
         actions: const [RatesAction()],
       ),
       body: SafeArea(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
+import 'branding.dart';
 import 'data/key_value_store.dart';
 import 'data/secure_hive_store.dart';
 import 'ui/screens/dashboard_screen.dart';
@@ -28,7 +29,7 @@ class JewelleryCostApp extends StatelessWidget {
   Widget build(BuildContext context) => AppScope(
     state: state,
     child: MaterialApp(
-      title: 'Smart Jewellery Cost Calculator',
+      title: Brand.name,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       // Compact UI: all text 25% smaller (on top of the phone's own

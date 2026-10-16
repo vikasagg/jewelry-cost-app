@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app_state.dart';
+import '../../branding.dart';
 import '../../core/money.dart';
 import '../../models/gold_rates.dart';
 import '../../models/jewellery_input.dart';
@@ -166,7 +167,7 @@ class _ResultScreenState extends State<ResultScreen> {
             ),
           ],
           text:
-              'Jewellery cost estimate${_input.tagNumber == null ? '' : ' – ${_input.tagNumber}'}: '
+              '${Brand.name} – jewellery cost estimate${_input.tagNumber == null ? '' : ' – ${_input.tagNumber}'}: '
               '${formatPaise(_result!.totalPaise)}',
         ),
       );
@@ -312,48 +313,19 @@ class _ResultScreenState extends State<ResultScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Jewellery Cost Summary',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      if (!_dirty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.okSoft,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'Saved',
-                            style: TextStyle(
-                              color: AppColors.ok,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                    ],
+                  // Branded header — this card is what customers receive
+                  // as the WhatsApp image.
+                  BrandHeader(
+                    subtitle:
+                        'Jewellery Cost Estimate · ${formatDateTime(widget.savedAt ?? AppScope.of(context).now())}',
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    i.displayName,
-                    style: const TextStyle(color: AppColors.muted),
-                  ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
                   // Jewellery details
                   TileGrid(
                     children: [
-                      StatTile(label: 'Tag No.', value: i.tagNumber ?? '—'),
+                      if ((i.tagNumber ?? '').trim().isNotEmpty)
+                        StatTile(label: 'Tag No.', value: i.tagNumber!),
                       StatTile(label: 'Gold Purity', value: r.purity.label),
                       StatTile(
                         label: 'Gold Weight',
@@ -446,6 +418,8 @@ class _ResultScreenState extends State<ResultScreen> {
                         ? 'No components taxable'
                         : r.gstLines
                               .expand((l) => l.components)
+                              // Only parts that actually add to the base.
+                              .where((c) => r.componentPaise(c) > 0)
                               .map(
                                 (c) => c.label
                                     .replaceAll(' value', '')
