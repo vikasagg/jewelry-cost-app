@@ -228,7 +228,8 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
               const SizedBox(height: 4),
               const Text(
                 'A tag line like DIA\\0.38\\700 has a rate code (700). '
-                '₹ per carat = code × multiplier.',
+                'Rate = code × multiplier (₹ per carat for diamond and polki, '
+                '₹ per piece for stones).',
                 style: TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 10),
@@ -254,7 +255,7 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                       child: Text(
                         v == null || v.isNaN
                             ? ''
-                            : 'Example: code $code → ${formatInr(code * v)} per carat',
+                            : 'Example: code $code → ${formatInr(code * v)} per ${k == StoneKind.stone ? 'piece' : 'carat'}',
                         style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.muted,

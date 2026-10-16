@@ -33,13 +33,19 @@ class PricingDefaultsRepository {
   final KeyValueStore _store;
   static const _counterKey = 'dj_tag_counter';
 
-  /// Tag rate code × multiplier = ₹ per carat. Diamonds and polki use ×100
-  /// (DIA\0.38\700 → ₹70,000/ct); stones use ×10 (Stn\0.25\600 → ₹6,000/ct).
+  /// Tag rate code × multiplier = rate. Diamonds and polki: ₹ per carat
+  /// = code × 100 (DIA\0.38\700 → ₹70,000/ct). Stones: ₹ per piece = code
+  /// as printed (Stn\4\600 → ₹600/pc; ×1 or ×10 is chosen per line).
   static const defaultMultipliers = {
     StoneKind.diamond: 100.0,
-    StoneKind.stone: 10.0,
+    StoneKind.stone: 1.0,
     StoneKind.polki: 100.0,
   };
+
+  /// Default labour (making) charge: 10% of gold value for plain gold
+  /// jewellery, ₹1,500 per gram when the item has diamonds.
+  static const plainMakingPercent = 10.0;
+  static const diamondMakingPerGram = 1500.0;
 
   /// GST % pre-filled on every new item (editable per item).
   static const defaultGstPercent = 3.0;
@@ -47,10 +53,13 @@ class PricingDefaultsRepository {
   /// Prefix of the automatic tag number, e.g. DJ-0001.
   static const tagPrefix = 'DJ-';
 
-  // Diamond keeps the original key so earlier settings carry over.
-  static String _multiplierKey(StoneKind kind) => kind == StoneKind.diamond
-      ? 'tag_rate_multiplier'
-      : 'tag_rate_multiplier_${kind.name}';
+  // Diamond keeps the original key so earlier settings carry over. Stones
+  // moved to per-piece rates, so the old ×10 stone setting is not reused.
+  static String _multiplierKey(StoneKind kind) => switch (kind) {
+    StoneKind.diamond => 'tag_rate_multiplier',
+    StoneKind.stone => 'tag_rate_multiplier_stone_v2',
+    StoneKind.polki => 'tag_rate_multiplier_polki',
+  };
 
   double tagRateMultiplier(StoneKind kind) =>
       double.tryParse(_store.get(_multiplierKey(kind)) ?? '') ??

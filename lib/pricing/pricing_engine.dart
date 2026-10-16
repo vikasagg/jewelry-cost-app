@@ -156,7 +156,7 @@ class PricingOutcome {
 /// Formulas:
 ///  * Gold value     = gold weight (g) × gold rate/g for the selected purity
 ///  * Diamond value  = Σ diamond lines (weight ct × rate/ct)
-///  * Stone value    = Σ stone lines (weight ct × rate/ct)
+///  * Stone value    = Σ stone lines (pieces × rate × 1 or 10)
 ///  * Polki value    = Σ polki lines (weight ct × rate/ct)
 ///  * Wastage        = gold value × % / 100   OR   wastage g × gold rate/g
 ///  * Making         = ₹/g × gold weight  OR  fixed ₹  OR  gold value × % / 100
@@ -199,7 +199,10 @@ class PricingEngine {
         linePaise.add(0);
         continue;
       }
-      final v = toPaise(line.weightCt! * line.ratePerCt!);
+      // Stones: pieces × rate × factor (1 or 10); others: ct × rate/ct.
+      final v = toPaise(
+        line.weightCt! * line.ratePerCt! * line.effectiveFactor,
+      );
       linePaise.add(v);
       switch (line.kind) {
         case StoneKind.diamond:
@@ -210,8 +213,12 @@ class PricingEngine {
           polki += v;
       }
       notes.add(
-        '${line.displayName}: ${line.weightCt!.toStringAsFixed(2)} ct × '
-        '${formatInr(line.ratePerCt!)}/ct',
+        line.isPieces
+            ? '${line.displayName}: ${formatPercent(line.weightCt!)} pcs × '
+                  '${formatInr(line.ratePerCt!)}'
+                  '${line.effectiveFactor == 1 ? '' : ' × ${line.effectiveFactor}'}'
+            : '${line.displayName}: ${line.weightCt!.toStringAsFixed(2)} ct × '
+                  '${formatInr(line.ratePerCt!)}/ct',
       );
     }
     if (input.excludeDiamond && input.diamondWeight > 0) {

@@ -106,6 +106,7 @@ class StoneLine {
     this.weightCt,
     this.ratePerCt,
     this.code,
+    this.rateFactor = 1,
   });
 
   final StoneKind kind;
@@ -113,11 +114,20 @@ class StoneLine {
   /// Label as printed on the tag ("DIA", "FANCY CUT"…), if any.
   final String? label;
 
-  /// Weight in carats.
+  /// Weight in carats — or, for [StoneKind.stone], the number of pieces.
   final double? weightCt;
 
-  /// Rate in ₹ per carat.
+  /// Rate in ₹ per carat — or, for stones, ₹ per piece.
   final double? ratePerCt;
+
+  /// Stones only: value = pieces × rate × [rateFactor] (1 or 10).
+  final int rateFactor;
+
+  /// Stones are counted in pieces; diamonds and polki in carats.
+  bool get isPieces => kind == StoneKind.stone;
+
+  /// Factor actually applied (always 1 for diamonds and polki).
+  int get effectiveFactor => isPieces ? rateFactor : 1;
 
   /// Rate code printed after the weight (e.g. 700 in `DIA\\0.38\\700`).
   /// It pre-fills [ratePerCt] (code × tag rate multiplier, ₹70,000/ct by
@@ -137,12 +147,14 @@ class StoneLine {
     double? weightCt,
     double? ratePerCt,
     String? code,
+    int? rateFactor,
   }) => StoneLine(
     kind: kind ?? this.kind,
     label: label ?? this.label,
     weightCt: weightCt ?? this.weightCt,
     ratePerCt: ratePerCt ?? this.ratePerCt,
     code: code ?? this.code,
+    rateFactor: rateFactor ?? this.rateFactor,
   );
 
   Map<String, dynamic> toJson() => {
@@ -151,6 +163,7 @@ class StoneLine {
     'weightCt': weightCt,
     'ratePerCt': ratePerCt,
     'code': code,
+    'rateFactor': rateFactor,
   };
 
   factory StoneLine.fromJson(Map<String, dynamic> j) => StoneLine(
@@ -162,6 +175,7 @@ class StoneLine {
     weightCt: (j['weightCt'] as num?)?.toDouble(),
     ratePerCt: (j['ratePerCt'] as num?)?.toDouble(),
     code: j['code'] as String?,
+    rateFactor: (j['rateFactor'] as num?)?.toInt() ?? 1,
   );
 }
 
@@ -221,7 +235,7 @@ class JewelleryInput {
   double get diamondWeight =>
       linesOf(StoneKind.diamond).fold(0.0, (a, s) => a + (s.weightCt ?? 0));
 
-  /// Total other-stone weight in carats.
+  /// Total number of stone pieces.
   double get stoneWeight =>
       linesOf(StoneKind.stone).fold(0.0, (a, s) => a + (s.weightCt ?? 0));
 

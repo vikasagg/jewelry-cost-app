@@ -405,7 +405,9 @@ class _ScanScreenState extends State<ScanScreen> {
                     note: st.kind.note,
                   )
                 : st.weight,
-            (v) => '${v.toStringAsFixed(2)} ct',
+            (v) => st.kind.value == StoneKind.stone
+                ? '${formatInput(v)} pcs'
+                : '${v.toStringAsFixed(2)} ct',
           ),
         if (p.weightBalance != null)
           Padding(

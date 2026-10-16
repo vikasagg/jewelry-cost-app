@@ -187,4 +187,50 @@ void main() {
     expect(find.text('Stone value'), findsNothing);
     expect(find.text('₹2,15,900.00'), findsOneWidget); // 26,600+8,250+1,81,050
   });
+
+  testWidgets('labour default: 10% without diamonds, ₹1,500/g with diamonds', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1080, 7000);
+    t.view.devicePixelRatio = 2.6;
+    addTearDown(t.view.reset);
+    final state = AppState(MemoryStore());
+    Future<void> open(String tagText) async {
+      await t.pumpWidget(
+        AppScope(
+          state: state,
+          child: MaterialApp(
+            key: UniqueKey(),
+            theme: buildTheme(),
+            home: DetailsFormScreen(parsed: const TagParser().parse(tagText)),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+    }
+
+    String making() =>
+        (t.widget(find.byKey(const Key('makingValue'))) as TextField)
+            .controller!
+            .text;
+
+    // Plain gold tag: 10% of gold value.
+    await open('N.Wt :5.000 22K');
+    expect(making(), '10');
+    expect(find.textContaining('10% of gold value'), findsOneWidget);
+
+    // Tag with diamonds: ₹1,500 per gram.
+    await open('N.Wt :5.886 14K\nDIA\\0.38\\700');
+    expect(making(), '1500');
+    expect(find.textContaining('₹1,500 per gram'), findsOneWidget);
+
+    // Removing the diamond weight switches back to 10% while still automatic.
+    await enter(t, 'stone.0.weight', '0');
+    expect(making(), '10');
+
+    // Typing your own value stops the automatic default.
+    await enter(t, 'makingValue', '1200');
+    await enter(t, 'stone.0.weight', '0.38');
+    expect(making(), '1200');
+  });
 }

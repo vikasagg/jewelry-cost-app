@@ -275,13 +275,16 @@ class _ResultScreenState extends State<ResultScreen> {
     for (var k = 0; k < i.stones.length; k++) {
       final s = i.stones[k];
       if (s.kind != kind || !s.hasWeight) continue;
-      final w = '${s.displayName} ${s.weightCt!.toStringAsFixed(2)} ct';
+      final w = s.isPieces
+          ? '${s.displayName} ${formatPercent(s.weightCt!)} pcs'
+          : '${s.displayName} ${s.weightCt!.toStringAsFixed(2)} ct';
       if (excluded || s.ratePerCt == null) {
         lines.add(w);
       } else {
         final v = k < r.stoneLinePaise.length ? r.stoneLinePaise[k] : null;
         lines.add(
           '$w × ${formatInr(s.ratePerCt!)}'
+          '${s.effectiveFactor == 1 ? '' : ' × ${s.effectiveFactor}'}'
           '${v == null ? '' : ' = ${formatPaise(v)}'}',
         );
       }
@@ -354,8 +357,8 @@ class _ResultScreenState extends State<ResultScreen> {
                         ),
                       if (i.stoneWeight > 0)
                         StatTile(
-                          label: 'Stone Weight',
-                          value: '${i.stoneWeight.toStringAsFixed(2)} ct',
+                          label: 'Stones',
+                          value: '${formatPercent(i.stoneWeight)} pcs',
                         ),
                       if (i.polkiWeight > 0)
                         StatTile(
