@@ -39,17 +39,33 @@ jobs:
           path: jewellery-cost-calculator.apk
           retention-days: 30
 
+      # main -> versioned release (Latest); other branches -> test pre-release.
+      - name: Release details
+        id: rel
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "tag=v1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "name=Damiyaas Jewelers v1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=android-test-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "name=Android test build ${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Direct-download link for installing on a phone (no zip, no login).
-      - name: Publish APK as a test release
+      - name: Publish APK release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-test-${{ github.run_number }}
+          tag_name: ${{ steps.rel.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Android test build ${{ github.run_number }}
-          prerelease: true
+          name: ${{ steps.rel.outputs.name }}
+          prerelease: ${{ steps.rel.outputs.prerelease }}
+          make_latest: ${{ steps.rel.outputs.prerelease == 'false' }}
           files: jewellery-cost-calculator.apk
           body: |
-            Test build of the Smart Jewellery Cost Calculator from `${{ github.ref_name }}` (${{ github.sha }}).
+            Damiyaas Jewelers — jewellery cost calculator for Android, built from `${{ github.ref_name }}` (${{ github.sha }}).
             On the phone: open this page, download **jewellery-cost-calculator.apk**, allow
-            "Install unknown apps" for your browser when asked, then install.
-            Signed with a debug key — for testing only, not for the Play Store.
+            "Install unknown apps" for your browser when asked, then install over the previous version
+            (saved rates and history are kept).
+            Signed with a debug key — for direct installation, not for the Play Store.
