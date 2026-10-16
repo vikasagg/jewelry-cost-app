@@ -38,8 +38,7 @@ class AppState extends ChangeNotifier {
 
   JewelleryInput get pricingDefaults => _defaults.load();
 
-  /// ₹/ct to pre-fill for a stone line: tag rate code × multiplier, or the
-  /// last rate typed for that kind (see [PricingDefaultsRepository]).
+  /// ₹/ct to pre-fill for a stone line: tag rate code × multiplier.
   double? stoneRateFor(StoneKind kind, String? code) =>
       _defaults.rateFor(kind, code);
 
@@ -78,7 +77,6 @@ class AppState extends ChangeNotifier {
             source: source,
           );
     await history.save(record);
-    await _defaults.rememberFrom(input);
     notifyListeners();
     return record;
   }

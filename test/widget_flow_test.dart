@@ -87,27 +87,23 @@ void main() {
     await t.tap(pct);
     await t.pumpAndSettle();
     await enter(t, 'makingValue', '10');
-    final wpct = find.descendant(
-      of: find.byKey(const Key('wastageMethod')),
-      matching: find.text('%'),
-    );
-    await reveal(t, wpct);
-    await t.tap(wpct);
-    await t.pumpAndSettle();
-    await enter(t, 'wastagePercent', '5');
-    await enter(t, 'gstRate', '3');
+    // GST defaults to 3%; wastage is no longer part of the app.
+    expect(find.byKey(const Key('wastageMethod')), findsNothing);
     await tapKey(t, 'calculate');
 
     expect(find.text('Jewellery Cost Summary'), findsOneWidget);
     expect(find.byKey(const Key('total')), findsOneWidget);
     expect(
       (t.widget(find.byKey(const Key('total'))) as Text).data,
-      '₹99,395.00',
+      // gold 70,000 + diamond 15,000 + stone 1,000 + making 7,000
+      // = 93,000; GST 3% = 2,790.
+      '₹95,790.00',
     );
+    expect(find.byKey(const Key('sendWhatsApp')), findsOneWidget);
 
     await tapKey(t, 'saveHistory');
     expect(state.history.all(), hasLength(1));
-    expect(state.history.all().single.result.totalPaise, 9939500);
+    expect(state.history.all().single.result.totalPaise, 9579000);
   });
 
   testWidgets('uncertain scanned fields must be confirmed', (t) async {

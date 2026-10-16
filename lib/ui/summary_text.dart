@@ -11,7 +11,6 @@ String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
     ..writeln('Estimate only — not a tax invoice')
     ..writeln('');
   if (i.tagNumber != null) b.writeln('Tag no: ${i.tagNumber}');
-  if (i.itemName != null) b.writeln('Item: ${i.itemName}');
   b
     ..writeln('Purity: ${r.purity.label}')
     ..writeln('Gold weight: ${i.goldWeight!.toStringAsFixed(3)} g');
@@ -35,9 +34,16 @@ String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
       '(rates of ${formatDateTime(rates.updatedAt)})',
     )
     ..writeln('Gold value: ${formatPaise(r.goldValuePaise)}')
-    ..writeln('Diamond value: ${formatPaise(r.diamondValuePaise)}')
-    ..writeln('Other stone value: ${formatPaise(r.stoneValuePaise)}')
-    ..writeln('Wastage charges: ${formatPaise(r.wastagePaise)}')
+    ..write(
+      r.diamondValuePaise > 0
+          ? 'Diamond value: ${formatPaise(r.diamondValuePaise)}\n'
+          : '',
+    )
+    ..write(
+      r.stoneValuePaise > 0
+          ? 'Stone value: ${formatPaise(r.stoneValuePaise)}\n'
+          : '',
+    )
     ..writeln('Making charges: ${formatPaise(r.makingPaise)}')
     ..writeln('Subtotal: ${formatPaise(r.subtotalPaise)}')
     ..writeln('Taxable subtotal: ${formatPaise(r.taxableBasePaise)}');

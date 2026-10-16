@@ -373,7 +373,6 @@ class _ScanScreenState extends State<ScanScreen> {
         const SizedBox(height: 12),
         const SectionTitle('Detected on tag'),
         _DetectedRow('Tag / item code', p.tagNumber, (v) => v),
-        _DetectedRow('Item', p.itemName, (v) => v),
         _DetectedRow<Purity>('Gold purity', p.purity, (v) => v.label),
         _DetectedRow<double>(
           'Gold weight',
@@ -427,13 +426,6 @@ class _ScanScreenState extends State<ScanScreen> {
             MakingMethod.fixed => '${formatInr(v)} fixed',
             _ => '${formatInr(v)}/g',
           },
-        ),
-        _DetectedRow<double>(
-          'Wastage',
-          p.wastageValue,
-          (v) => p.wastageMethod.value == WastageMethod.weight
-              ? '${formatInput(v)} g'
-              : '${formatInput(v)}%',
         ),
         const SizedBox(height: 8),
         if (p.unreadStoneWeightG != null) ...[

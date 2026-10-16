@@ -178,20 +178,29 @@ void main() {
     expect(old.stones.last.ratePerCt, 5000);
   });
 
-  test('pricing defaults remember rates and GST but not item data', () async {
+  test('every new item starts clean: GST 3%, nothing carried over', () async {
     final state = AppState(MemoryStore());
     await state.saveRates(ratesAt(5300, day1));
-    final r = state.engine.calculate(input, state.rates!.perGram).result!;
+    final previous = input.copyWith(
+      makingMethod: MakingMethod.perGram,
+      makingValue: 1200,
+      gst: const GstConfig(ratePercent: 5),
+    );
+    final r = state.engine.calculate(previous, state.rates!.perGram).result!;
     await state.saveCalculation(
-      input: input,
+      input: previous,
       ratesSnapshot: state.rates!,
       result: r,
     );
     final d = state.pricingDefaults;
-    expect(d.stones.first.kind, StoneKind.diamond);
-    expect(d.stones.first.ratePerCt, 30000);
-    expect(d.stones.first.weightCt, isNull);
     expect(d.gst.ratePercent, 3);
+    expect(d.makingMethod, MakingMethod.perGram);
+    expect(d.makingValue, isNull);
+    expect(
+      d.stones.every((s) => s.ratePerCt == null && s.weightCt == null),
+      isTrue,
+    );
+    expect(d.wastageMethod, WastageMethod.none);
     expect(d.goldWeight, isNull);
     expect(d.tagNumber, isNull);
   });

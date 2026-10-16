@@ -208,7 +208,7 @@ class _RecordCard extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'Gold rate ${formatInr(record.goldRateUsed)}/g · '
-                'Making ${formatPaise(r.makingPaise)} · Wastage ${formatPaise(r.wastagePaise)} · '
+                'Making ${formatPaise(r.makingPaise)} · '
                 'GST ${r.gstLines.map((l) => '${formatPercent(l.ratePercent)}%').join('+')}',
                 style: const TextStyle(color: AppColors.muted, fontSize: 13),
               ),

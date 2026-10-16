@@ -90,11 +90,7 @@ class ParsedTag {
     }
     add('makingValue', makingValue, 'making charges');
     add('makingValue', makingMethod, 'making charge type');
-    final wKey = wastageMethod.value == WastageMethod.weight
-        ? 'wastageWeight'
-        : 'wastagePercent';
-    add(wKey, wastageValue, 'wastage');
-    add(wKey, wastageMethod, 'wastage type');
+    // Wastage is not used by the app, so it never needs confirmation.
     return out;
   }
 
@@ -145,13 +141,8 @@ class ParsedTag {
     excludeStone: defaults.excludeStone,
     makingMethod: makingMethod.value ?? defaults.makingMethod,
     makingValue: makingValue.value ?? defaults.makingValue,
-    wastageMethod: wastageMethod.value ?? defaults.wastageMethod,
-    wastagePercent: wastageMethod.value == WastageMethod.percent
-        ? wastageValue.value
-        : defaults.wastagePercent,
-    wastageWeight: wastageMethod.value == WastageMethod.weight
-        ? wastageValue.value
-        : defaults.wastageWeight,
+    // Wastage is not used by the app (even if printed on the tag).
+    wastageMethod: WastageMethod.none,
     gst: defaults.gst,
   );
 }
@@ -261,8 +252,9 @@ class TagParser {
   static const _diamondLabel =
       r'DIAMONDS?(?:\s*W(?:EIGH)?T\.?)?|DIA\.?\s*W(?:EIGH)?T\.?|DIA|D\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|SOLITAIRE';
   static const _fancyLabel = r'[A-Z@]{0,3}ANCY\s*CUT';
+  // "Stn", "Stn.", "Stn.M" (stone) — priced like DIA lines: weight\code.
   static const _stoneLabel =
-      r'OTHER\s+STONES?(?:\s*W(?:EIGH)?T\.?)?|(?:COLOU?R(?:ED)?\s+)?STONES?(?:\s*W(?:EIGH)?T\.?)?|ST\.?\s*WT\.?|S\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|C\.?S\.?\s*WT\.?|CZ|PEARLS?|RUBY|EMERALD|SAPPHIRE|POLKI|KUNDAN|GEMS?(?:TONES?)?';
+      r'STN\.?(?:\s*M\b\.?)?|OTHER\s+STONES?(?:\s*W(?:EIGH)?T\.?)?|(?:COLOU?R(?:ED)?\s+)?STONES?(?:\s*W(?:EIGH)?T\.?)?|ST\.?\s*WT\.?|S\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|C\.?S\.?\s*WT\.?|CZ|PEARLS?|RUBY|EMERALD|SAPPHIRE|POLKI|KUNDAN|GEMS?(?:TONES?)?';
   static const _makingLabel =
       r'(?:MAKING\s*CHARGES?|MAKING|LABOU?R\s*CHARGES?|LABOU?R|M\s?\.?\s?C\s?\.?)';
   static const _wastageLabel =
@@ -504,12 +496,15 @@ class TagParser {
 
       final isFancy = m.namedGroup('fancy') != null;
       final isStone = m.namedGroup('stone') != null;
+      final rawLabel = (m.namedGroup('dia') ?? m.namedGroup('stone') ?? '')
+          .toUpperCase()
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
       final label = isFancy
           ? 'FANCY CUT'
-          : (m.namedGroup('dia') ?? m.namedGroup('stone')!)
-                .toUpperCase()
-                .replaceAll(RegExp(r'\s+'), ' ')
-                .trim();
+          : rawLabel.startsWith('STN')
+          ? 'STN' // "Stn.M" is treated as "Stn"
+          : rawLabel;
 
       final reasons = [...n.reasons];
       var value = n.value;

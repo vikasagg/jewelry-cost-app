@@ -304,6 +304,45 @@ void main() {
     });
   });
 
+  group('Stn lines (weight\\code like DIA)', () {
+    test('Stn\\0.25\\600 and Stn/0.10/450 → stone lines with codes', () {
+      final t = parser.parse(
+        'N.Wt :3.250 18K\nDIA\\0.12\\700\nStn\\0.25\\600\nStn/0.10/450\n',
+      );
+      expect(t.stones.map((s) => s.label), ['DIA', 'STN', 'STN']);
+      expect(t.stones.map((s) => s.kind.value), [
+        StoneKind.diamond,
+        StoneKind.stone,
+        StoneKind.stone,
+      ]);
+      expect(t.stones.map((s) => s.weight.value), [0.12, 0.25, 0.10]);
+      expect(t.stones.map((s) => s.code), ['700', '600', '450']);
+      final input = t.toInput(
+        const JewelleryInput(),
+        rateFor: (kind, code) => double.parse(code!) * 100,
+      );
+      expect(input.stones[1].ratePerCt, 60000);
+      expect(input.stones[2].ratePerCt, 45000);
+    });
+
+    test('Stn.M is treated as Stn', () {
+      final t = parser.parse('Stn.M\\0.40\\350\nSTN.M/0.05/300');
+      expect(t.stones.map((s) => s.label), ['STN', 'STN']);
+      expect(t.stones.map((s) => s.weight.value), [0.40, 0.05]);
+      expect(t.stones.map((s) => s.code), ['350', '300']);
+      expect(t.stones.every((s) => s.kind.value == StoneKind.stone), isTrue);
+    });
+
+    test('wastage printed on a tag is ignored', () {
+      final t = parser.parse('N.Wt 2.000 22K\nWastage 8%');
+      expect(t.uncertainFields, isEmpty);
+      expect(
+        t.toInput(const JewelleryInput()).wastageMethod,
+        WastageMethod.none,
+      );
+    });
+  });
+
   group('sample tags', () {
     test('01 diamond ring 18K', () {
       final t = parser.parse(sample('01_diamond_ring_18k.txt'));

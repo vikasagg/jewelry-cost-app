@@ -28,11 +28,10 @@ Gold value    = gold weight (g) × rate per gram for the selected purity   (no e
                 rates can be entered per 10 g (default) or per 1 g; per-10 g rates are divided by 10 internally
 Diamond value = diamond weight (ct) × diamond rate/ct     — rate required, or diamond explicitly excluded
 Stone value   = stone weight (ct) × stone rate/ct         — 0 allowed, or stone excluded
-Wastage       = gold value × % / 100   OR   wastage weight (g) × gold rate/g   (one method only)
 Making        = ₹ per gram × gold (net) weight   (default, e.g. 1200 × 1.35 g = ₹1,620)
                 OR fixed ₹   OR   gold value × % / 100
-Subtotal      = gold + diamond + stone + wastage + making
-GST           = taxable base × GST % / 100   (you choose which parts are taxed; making charges can have their own rate)
+Subtotal      = gold + diamond + stone + making
+GST           = taxable base × GST % / 100   (GST defaults to 3%, editable per item)   (you choose which parts are taxed; making charges can have their own rate)
 Total         = subtotal + GST
 ```
 

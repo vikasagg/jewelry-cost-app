@@ -55,7 +55,6 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
 
   Purity? _purity;
   MakingMethod _making = MakingMethod.perGram;
-  WastageMethod _wastage = WastageMethod.none;
   final _stones = <_StoneRow>[];
   bool _excludeDiamond = false;
   bool _excludeStone = false;
@@ -120,7 +119,6 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     _c['gstMakingRate']!.text = formatInput(i.gst.makingRatePercent);
     _purity = i.purity;
     _making = i.makingMethod;
-    _wastage = i.wastageMethod;
     _excludeDiamond = i.excludeDiamond;
     _excludeStone = i.excludeStone;
     _taxable = i.gst.taxable.toSet();
@@ -159,7 +157,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     excludeStone: _excludeStone,
     makingMethod: _making,
     makingValue: _num('makingValue'),
-    wastageMethod: _wastage,
+    wastageMethod: WastageMethod.none, // wastage is not used
     wastagePercent: _num('wastagePercent'),
     wastageWeight: _num('wastageWeight'),
     gst: GstConfig(
@@ -392,8 +390,6 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               // ---------------------------------------------- identification
               const SectionTitle('Jewellery identification'),
               _textField('tagNumber', 'Tag number / item code'),
-              const SizedBox(height: 12),
-              _textField('itemName', 'Item name / description'),
 
               // --------------------------------------------- weight & purity
               const SizedBox(height: 14),
@@ -579,47 +575,6 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                   '% of gold value',
                 ),
               },
-              const SizedBox(height: 10),
-              const Text(
-                'Wastage (one method only)',
-                style: TextStyle(color: AppColors.muted),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<WastageMethod>(
-                  key: const Key('wastageMethod'),
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(
-                      value: WastageMethod.none,
-                      label: Text('None'),
-                    ),
-                    ButtonSegment(
-                      value: WastageMethod.percent,
-                      label: Text('%'),
-                    ),
-                    ButtonSegment(
-                      value: WastageMethod.weight,
-                      label: Text('Grams'),
-                    ),
-                  ],
-                  selected: {_wastage},
-                  onSelectionChanged: (s) {
-                    setState(() {
-                      // The method choice resolves any "% or grams?" doubt.
-                      _uncertain.remove('wastagePercent');
-                      _uncertain.remove('wastageWeight');
-                      _wastage = s.first;
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (_wastage == WastageMethod.percent)
-                _num2('wastagePercent', 'Wastage', '% of gold value'),
-              if (_wastage == WastageMethod.weight)
-                _num2('wastageWeight', 'Wastage weight', 'g × gold rate'),
 
               // -------------------------------------------------------- GST
               const SizedBox(height: 14),
@@ -639,7 +594,9 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 spacing: 8,
                 runSpacing: 4,
                 children: [
-                  for (final comp in PriceComponent.values)
+                  for (final comp in PriceComponent.values.where(
+                    (c) => c != PriceComponent.wastage,
+                  ))
                     FilterChip(
                       label: Text(comp.label),
                       selected: _taxable.contains(comp),
