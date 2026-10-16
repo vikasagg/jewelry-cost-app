@@ -325,6 +325,17 @@ void main() {
       expect(input.stones[2].ratePerCt, 45000);
     });
 
+    test('stone pieces are not used in the gross − net weight balance', () {
+      // 6.410 − 5.886 = 0.524 g; the stone line is 4 pieces of unknown weight.
+      final t = parser.parse(
+        'G.Wt :6.410 14K\nN.Wt :5.886\nDIA\\0.49\\700\nStn\\4\\600\n',
+      );
+      expect(t.weightBalance, isNull);
+      expect(t.stones.last.weight.value, 4);
+      expect(t.uncertainFields.keys, isNot(contains('stone.0.weight')));
+      expect(t.uncertainFields.keys, isNot(contains('stone.1.weight')));
+    });
+
     test('Stn.M is treated as Stn', () {
       final t = parser.parse('Stn.M\\0.40\\350\nSTN.M/0.05/300');
       expect(t.stones.map((s) => s.label), ['STN', 'STN']);

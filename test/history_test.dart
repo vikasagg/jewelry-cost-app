@@ -131,24 +131,30 @@ void main() {
   });
 
   test(
-    'tag rate code: diamond & polki ×100, stone ×10; configurable',
+    'tag rate code: diamond & polki ×100 per ct, stone = ₹ per piece',
     () async {
       final store = MemoryStore();
       final state = AppState(store);
       expect(state.tagRateMultiplier(StoneKind.diamond), 100);
-      expect(state.tagRateMultiplier(StoneKind.stone), 10);
+      expect(state.tagRateMultiplier(StoneKind.stone), 1);
       expect(state.tagRateMultiplier(StoneKind.polki), 100);
       expect(state.stoneRateFor(StoneKind.diamond, '700'), 70000);
       expect(state.stoneRateFor(StoneKind.diamond, '850'), 85000);
-      expect(state.stoneRateFor(StoneKind.stone, '600'), 6000);
+      expect(state.stoneRateFor(StoneKind.stone, '600'), 600);
       expect(state.stoneRateFor(StoneKind.polki, '300'), 30000);
       expect(state.stoneRateFor(StoneKind.diamond, 'AB'), isNull);
-      await state.setTagRateMultiplier(StoneKind.stone, 20);
+      await state.setTagRateMultiplier(StoneKind.stone, 2);
       final reloaded = AppState(store);
-      expect(reloaded.stoneRateFor(StoneKind.stone, '600'), 12000);
+      expect(reloaded.stoneRateFor(StoneKind.stone, '600'), 1200);
       expect(reloaded.stoneRateFor(StoneKind.diamond, '700'), 70000);
     },
   );
+
+  test('old ×10 stone setting from v1.0.14 is not reused', () async {
+    final store = MemoryStore();
+    await store.put('tag_rate_multiplier_stone', '10.0');
+    expect(AppState(store).stoneRateFor(StoneKind.stone, '600'), 600);
+  });
 
   test('automatic DJ- tag numbers count up as estimates are saved', () async {
     final store = MemoryStore();

@@ -161,6 +161,12 @@ int scoreParsedTag(ParsedTag t) {
   return score;
 }
 
+/// Total carats of diamond and polki lines. Stone lines are counted in
+/// pieces, so they cannot take part in the gross − net weight balance.
+double _caratTotal(List<ParsedStone> stones) => stones
+    .where((st) => st.kind.value != StoneKind.stone)
+    .fold(0.0, (a, st) => a + (st.weight.value ?? 0));
+
 /// One diamond/stone group read from a tag.
 class ParsedStone {
   const ParsedStone({
@@ -317,9 +323,14 @@ class TagParser {
     WeightBalance? balance;
     final gross = grossWeight.value;
     final net = goldWeight.value;
-    if (gross != null && net != null && stones.isNotEmpty) {
+    // Only possible when every line is in carats: stone lines are counted
+    // in pieces, whose weight in grams is unknown.
+    final allCarats =
+        stones.isNotEmpty &&
+        stones.every((st) => st.kind.value != StoneKind.stone);
+    if (gross != null && net != null && allCarats) {
       stones = _resolveMerged(stones, gross, net);
-      final ct = stones.fold<double>(0, (a, st) => a + (st.weight.value ?? 0));
+      final ct = _caratTotal(stones);
       balance = WeightBalance(grossG: gross, netG: net, stonesCt: ct);
     }
     final balanced = balance?.balances ?? false;
@@ -352,7 +363,7 @@ class TagParser {
               st.weight.value,
               FieldConfidence.low,
               note:
-                  'Stone weights do not match gross − net weight '
+                  'Diamond weights do not match gross − net weight '
                   '(${b.describe()}) — confirm',
               source: st.weight.source,
             ),
@@ -570,7 +581,7 @@ class TagParser {
     bool balances(List<ParsedStone> s) => WeightBalance(
       grossG: gross,
       netG: net,
-      stonesCt: s.fold(0, (a, st) => a + (st.weight.value ?? 0)),
+      stonesCt: _caratTotal(s),
     ).balances;
 
     final merged = [

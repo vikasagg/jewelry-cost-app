@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
 import '../../core/money.dart';
+import '../../data/repositories.dart';
 import '../../models/gold_rates.dart';
 import '../../models/jewellery_input.dart';
 import '../../models/purity.dart';
@@ -90,6 +91,11 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     if (widget.initial == null && _c['tagNumber']!.text.trim().isEmpty) {
       _c['tagNumber']!.text = state.nextTagNumber;
     }
+    // New items without a labour charge on the tag get the shop default.
+    if (widget.initial == null && _c['makingValue']!.text.trim().isEmpty) {
+      _makingAuto = true;
+      _applyMakingDefault();
+    }
     final parsed = widget.parsed;
     if (parsed != null) {
       _uncertain.addAll(parsed.uncertainFields);
@@ -177,7 +183,36 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
       _errors.remove(key);
       _uncertain.remove(key);
       _missing.remove(key);
+      if (key == 'makingValue') {
+        _makingAuto = false; // staff typed their own labour charge
+      } else if (key.startsWith('stone.')) {
+        _applyMakingDefault();
+      }
     });
+  }
+
+  /// True while the labour charge is the automatic default (not typed).
+  bool _makingAuto = false;
+
+  bool get _hasDiamond => _stones.any(
+    (r) => r.kind == StoneKind.diamond && (parseNumber(r.weight.text) ?? 0) > 0,
+  );
+
+  /// Default labour charge: 10% of gold value for plain jewellery,
+  /// ₹1,500 per gram when the item has diamonds.
+  void _applyMakingDefault() {
+    if (!_makingAuto) return;
+    if (_hasDiamond) {
+      _making = MakingMethod.perGram;
+      _c['makingValue']!.text = formatInput(
+        PricingDefaultsRepository.diamondMakingPerGram,
+      );
+    } else {
+      _making = MakingMethod.percentOfGold;
+      _c['makingValue']!.text = formatInput(
+        PricingDefaultsRepository.plainMakingPercent,
+      );
+    }
   }
 
   void _confirm(String key) => setState(() => _uncertain.remove(key));
@@ -241,6 +276,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
 
     setState(() {
       _stones.removeAt(index).dispose();
+      _applyMakingDefault();
       final u = shift(_uncertain);
       _uncertain
         ..clear()
@@ -568,7 +604,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                   selected: {_making},
                   onSelectionChanged: (s) {
                     _making = s.first;
-                    _edited('makingValue');
+                    _edited('makingValue'); // also stops the auto default
                   },
                 ),
               ),
@@ -592,6 +628,20 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                   '% of gold value',
                 ),
               },
+              if (_makingAuto)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, top: 4),
+                  child: Text(
+                    _hasDiamond
+                        ? 'Default labour for diamond jewellery: ₹1,500 per gram'
+                        : 'Default labour for plain gold jewellery: 10% of gold value',
+                    key: const Key('makingDefaultHint'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
 
               // -------------------------------------------------------- GST
               const SizedBox(height: 14),
@@ -720,7 +770,9 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: _stoneField(i, 'weight', row.weight, 'Weight', 'ct'),
+                    child: row.kind == StoneKind.stone
+                        ? _stoneField(i, 'weight', row.weight, 'Pieces', 'pcs')
+                        : _stoneField(i, 'weight', row.weight, 'Weight', 'ct'),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -729,7 +781,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                       'rate',
                       row.rate,
                       'Rate',
-                      '/ ct',
+                      row.kind == StoneKind.stone ? '/ pc' : '/ ct',
                       prefix: '₹ ',
                       enabled: !excluded,
                     ),
@@ -737,13 +789,33 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 ],
               ),
             ),
+            // Stones: value = pieces × rate, or pieces × rate × 10.
+            if (row.kind == StoneKind.stone) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SegmentedButton<int>(
+                  key: Key('stone.$i.factor'),
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 1, label: Text('Pieces × rate')),
+                    ButtonSegment(value: 10, label: Text('Pieces × rate × 10')),
+                  ],
+                  selected: {row.rateFactor},
+                  onSelectionChanged: (sel) =>
+                      setState(() => row.rateFactor = sel.first),
+                ),
+              ),
+            ],
             if (row.code != null && row.codeRate != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6, right: 8),
                 child: Text(
-                  'Rate from tag: ${row.code} × '
-                  '${formatPercent(AppScope.of(context).tagRateMultiplier(row.kind))} = '
-                  '${formatInr(row.codeRate!)}/ct',
+                  row.kind == StoneKind.stone
+                      ? 'Rate from tag: ${formatInr(row.codeRate!)} per piece'
+                      : 'Rate from tag: ${row.code} × '
+                            '${formatPercent(AppScope.of(context).tagRateMultiplier(row.kind))} = '
+                            '${formatInr(row.codeRate!)}/ct',
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ),
@@ -782,10 +854,15 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   Widget _weightBalance() {
     final gross = parseNumber(_c['grossWeight']!.text);
     final net = parseNumber(_c['goldWeight']!.text);
-    final ct = _stones.fold<double>(
-      0,
-      (a, r) => a + (parseNumber(r.weight.text) ?? 0),
-    );
+    // Only carat lines can be checked; stones are counted in pieces.
+    if (_stones.any(
+      (r) => r.kind == StoneKind.stone && r.weight.text.trim().isNotEmpty,
+    )) {
+      return const SizedBox(height: 8);
+    }
+    final ct = _stones
+        .where((r) => r.kind != StoneKind.stone)
+        .fold<double>(0, (a, r) => a + (parseNumber(r.weight.text) ?? 0));
     if (gross == null || net == null || gross.isNaN || net.isNaN || ct <= 0) {
       return const SizedBox(height: 8);
     }
@@ -891,14 +968,29 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
 
 /// Editable state for one diamond/stone line.
 class _StoneRow {
-  _StoneRow({required this.kind, this.label, this.code, this.codeRate});
+  _StoneRow({
+    required this.kind,
+    this.label,
+    this.code,
+    this.codeRate,
+    this.rateFactor = 1,
+  });
 
   factory _StoneRow.from(StoneLine l, {double? codeRate}) =>
-      _StoneRow(kind: l.kind, label: l.label, code: l.code, codeRate: codeRate)
+      _StoneRow(
+          kind: l.kind,
+          label: l.label,
+          code: l.code,
+          codeRate: codeRate,
+          rateFactor: l.rateFactor,
+        )
         ..weight.text = formatInput(l.weightCt)
         ..rate.text = formatInput(l.ratePerCt);
 
   StoneKind kind;
+
+  /// Stones only: 1 (pieces × rate) or 10 (pieces × rate × 10).
+  int rateFactor;
   final String? label;
   final String? code;
 
@@ -915,6 +1007,7 @@ class _StoneRow {
     code: code,
     weightCt: parseNumber(weight.text),
     ratePerCt: parseNumber(rate.text),
+    rateFactor: rateFactor,
   );
 
   void dispose() {

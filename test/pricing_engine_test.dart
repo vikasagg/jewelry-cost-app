@@ -489,6 +489,71 @@ void main() {
     expect(o.issues.single.field, 'stone.0.rate');
   });
 
+  group('stones are priced per piece (× 1 or × 10)', () {
+    test('pieces × rate', () {
+      final r = ok(
+        base().copyWith(
+          stones: const [
+            StoneLine(
+              kind: StoneKind.stone,
+              label: 'STN',
+              weightCt: 4,
+              ratePerCt: 600,
+              code: '600',
+            ),
+          ],
+        ),
+      );
+      expect(r.stoneValuePaise, 240000); // 4 × 600 = ₹2,400
+    });
+
+    test('pieces × rate × 10', () {
+      final r = ok(
+        base().copyWith(
+          stones: const [
+            StoneLine(
+              kind: StoneKind.stone,
+              weightCt: 4,
+              ratePerCt: 600,
+              rateFactor: 10,
+            ),
+          ],
+        ),
+      );
+      expect(r.stoneValuePaise, 2400000); // 4 × 600 × 10 = ₹24,000
+    });
+
+    test('the ×10 factor never applies to diamonds or polki', () {
+      final r = ok(
+        base().copyWith(
+          stones: const [
+            StoneLine(
+              kind: StoneKind.diamond,
+              weightCt: 0.5,
+              ratePerCt: 70000,
+              rateFactor: 10,
+            ),
+          ],
+        ),
+      );
+      expect(r.diamondValuePaise, 3500000);
+    });
+
+    test('factor survives JSON round-trip; old records default to ×1', () {
+      const l = StoneLine(
+        kind: StoneKind.stone,
+        weightCt: 3,
+        ratePerCt: 500,
+        rateFactor: 10,
+      );
+      expect(StoneLine.fromJson(l.toJson()).rateFactor, 10);
+      expect(
+        StoneLine.fromJson({'kind': 'stone', 'weightCt': 3.0}).rateFactor,
+        1,
+      );
+    });
+  });
+
   test('line items always sum to totals', () {
     final r = ok(
       JewelleryInput(

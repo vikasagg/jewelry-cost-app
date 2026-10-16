@@ -25,8 +25,9 @@ String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
     final value = k < r.stoneLinePaise.length ? r.stoneLinePaise[k] : 0;
     b.writeln(
       '${s.displayName} (${s.kind.label.toLowerCase()}): '
-      '${s.weightCt!.toStringAsFixed(2)} ct'
-      '${s.ratePerCt == null ? '' : ' × ${formatInr(s.ratePerCt!)}/ct = ${formatPaise(value)}'}',
+      '${s.isPieces ? '${formatPercent(s.weightCt!)} pcs' : '${s.weightCt!.toStringAsFixed(2)} ct'}'
+      '${s.ratePerCt == null ? '' : ' × ${formatInr(s.ratePerCt!)}${s.isPieces ? '' : '/ct'}'
+                '${s.effectiveFactor == 1 ? '' : ' × ${s.effectiveFactor}'} = ${formatPaise(value)}'}',
     );
   }
   b
