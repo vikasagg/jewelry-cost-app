@@ -115,8 +115,8 @@ class ParsedTag {
   ];
 
   /// Builds a form input, layering tag values over [defaults].
-  /// [rateFor] supplies a remembered ₹/ct rate for a stone line (by kind and
-  /// tag code); it is the user's own earlier input, never read from the tag.
+  /// [rateFor] supplies the ₹/ct for a stone line from its printed rate code
+  /// (or a remembered default when the line has no code).
   JewelleryInput toInput(
     JewelleryInput defaults, {
     double? Function(StoneKind kind, String? code)? rateFor,
@@ -184,7 +184,7 @@ class ParsedStone {
   final ParsedField<double> weight;
   final ParsedField<StoneKind> kind;
 
-  /// Code printed after the weight (e.g. 700 in `DIA\\0.38\\700`).
+  /// Rate code printed after the weight (e.g. 700 in `DIA\\0.38\\700`).
   final String? code;
 }
 
@@ -544,17 +544,11 @@ class TagParser {
                 : 'Confirm $label weight: ${reasons.join('; ')}',
             source: m.group(0)!.trim(),
           ),
-          kind: isFancy
-              ? const ParsedField(
-                  StoneKind.diamond,
-                  FieldConfidence.low,
-                  note:
-                      'FANCY CUT read as diamonds — confirm diamond or other stone',
-                )
-              : ParsedField(
-                  isStone ? StoneKind.stone : StoneKind.diamond,
-                  FieldConfidence.high,
-                ),
+          // FANCY CUT = fancy-shaped diamonds (confirmed with the retailer).
+          kind: ParsedField(
+            isStone ? StoneKind.stone : StoneKind.diamond,
+            FieldConfidence.high,
+          ),
         ),
       );
     }

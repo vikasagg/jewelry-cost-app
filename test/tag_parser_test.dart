@@ -197,8 +197,8 @@ void main() {
       expect(t.weightBalance!.balances, isTrue);
       expect(t.goldWeight.confidence, FieldConfidence.high);
       expect(t.grossWeight.confidence, FieldConfidence.high);
-      // Only open question: are "FANCY CUT" diamonds or other stones?
-      expect(t.uncertainFields.keys, ['stone.2.kind']);
+      expect(t.stones.every((s) => s.kind.value == StoneKind.diamond), isTrue);
+      expect(t.uncertainFields, isEmpty);
     });
 
     // Actual Tesseract output for the photo after crop + rotate.
@@ -212,7 +212,7 @@ void main() {
       expectStones(t);
       // The 2.13 / 850 split is confirmed by the weight balance.
       expect(t.stones[2].weight.confidence, FieldConfidence.high);
-      expect(t.uncertainFields.keys, ['stone.2.kind']);
+      expect(t.uncertainFields, isEmpty);
     });
 
     test('OCR: backslash read as N and as 1 ("DIAN0.11", "2.131850")', () {
@@ -233,7 +233,7 @@ void main() {
       expect(t.goldWeight.value, 5.886);
       expect(t.grossWeight.value, 6.410);
       expectStones(t);
-      expect(t.uncertainFields.keys, ['stone.2.kind']);
+      expect(t.uncertainFields, isEmpty);
     });
 
     test(
@@ -247,10 +247,7 @@ void main() {
         expect(t.goldWeight.confidence, FieldConfidence.high);
         expect(t.grossWeight.isFound, isFalse); // never guessed from "16.410"
         expectStones(t);
-        expect(
-          t.uncertainFields.keys,
-          containsAll(['stone.2.weight', 'stone.2.kind']),
-        );
+        expect(t.uncertainFields.keys, ['stone.2.weight']);
       },
     );
 

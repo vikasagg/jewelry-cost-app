@@ -103,7 +103,16 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     }
     _stones
       ..clear()
-      ..addAll(i.stones.map(_StoneRow.from));
+      ..addAll(
+        i.stones.map(
+          (l) => _StoneRow.from(
+            l,
+            codeRate: l.code == null
+                ? null
+                : AppScope.read(context).stoneRateFor(l.kind, l.code),
+          ),
+        ),
+      );
     _c['makingValue']!.text = formatInput(i.makingValue);
     _c['wastagePercent']!.text = formatInput(i.wastagePercent);
     _c['wastageWeight']!.text = formatInput(i.wastageWeight);
@@ -677,7 +686,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                   child: Text(
                     [
                       row.label ?? 'Line ${i + 1}',
-                      if (row.code != null) 'tag code ${row.code}',
+                      if (row.code != null) 'tag rate ${row.code}',
                     ].join(' · '),
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
@@ -735,6 +744,16 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 ],
               ),
             ),
+            if (row.code != null && row.codeRate != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, right: 8),
+                child: Text(
+                  'Rate from tag: ${row.code} × '
+                  '${formatPercent(AppScope.of(context).tagRateMultiplier)} = '
+                  '${formatInr(row.codeRate!)}/ct',
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+              ),
           ],
         ),
       ),
@@ -879,16 +898,19 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
 
 /// Editable state for one diamond/stone line.
 class _StoneRow {
-  _StoneRow({required this.kind, this.label, this.code});
+  _StoneRow({required this.kind, this.label, this.code, this.codeRate});
 
-  factory _StoneRow.from(StoneLine l) =>
-      _StoneRow(kind: l.kind, label: l.label, code: l.code)
+  factory _StoneRow.from(StoneLine l, {double? codeRate}) =>
+      _StoneRow(kind: l.kind, label: l.label, code: l.code, codeRate: codeRate)
         ..weight.text = formatInput(l.weightCt)
         ..rate.text = formatInput(l.ratePerCt);
 
   StoneKind kind;
   final String? label;
   final String? code;
+
+  /// ₹/ct derived from [code] (code × multiplier), shown as a hint.
+  final double? codeRate;
   final weight = TextEditingController();
   final rate = TextEditingController();
 

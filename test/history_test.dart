@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewellery_cost/app_state.dart';
 import 'package:jewellery_cost/data/key_value_store.dart';
 import 'package:jewellery_cost/models/gold_rates.dart';
 import 'package:jewellery_cost/models/jewellery_input.dart';
 import 'package:jewellery_cost/models/purity.dart';
+import 'package:jewellery_cost/ocr/tag_parser.dart';
 
 StoneLine dia(double? w, double? r) =>
     StoneLine(kind: StoneKind.diamond, label: 'DIA', weightCt: w, ratePerCt: r);
@@ -127,38 +130,36 @@ void main() {
     expect(state.history.all().length, 1);
   });
 
-  test('stone rates are remembered per tag code, never across codes', () async {
+  test(
+    'tag rate code × 100 = ₹ per carat; multiplier is configurable',
+    () async {
+      final store = MemoryStore();
+      final state = AppState(store);
+      expect(state.tagRateMultiplier, 100);
+      expect(state.stoneRateFor(StoneKind.diamond, '700'), 70000);
+      expect(state.stoneRateFor(StoneKind.diamond, '750'), 75000);
+      expect(state.stoneRateFor(StoneKind.diamond, '850'), 85000);
+      expect(state.stoneRateFor(StoneKind.diamond, 'AB'), isNull);
+      await state.setTagRateMultiplier(1000);
+      expect(AppState(store).stoneRateFor(StoneKind.diamond, '70'), 70000);
+    },
+  );
+
+  test('real tag 08 prices end to end with tag rates', () async {
     final state = AppState(MemoryStore());
-    await state.saveRates(ratesAt(5300, day1));
-    final coded = input.copyWith(
-      stones: [
-        const StoneLine(
-          kind: StoneKind.diamond,
-          label: 'DIA',
-          weightCt: 0.38,
-          ratePerCt: 70000,
-          code: '700',
-        ),
-        const StoneLine(
-          kind: StoneKind.diamond,
-          label: 'DIA',
-          weightCt: 0.11,
-          ratePerCt: 75000,
-          code: '750',
-        ),
-      ],
+    await state.saveRates(ratesAt(5300, day1)); // 14K = ₹4,100/g
+    final parsed = const TagParser().parse(
+      File('samples/tags/08_real_14k_diamond.txt').readAsStringSync(),
     );
-    final r = state.engine.calculate(coded, state.rates!.perGram).result!;
-    await state.saveCalculation(
-      input: coded,
-      ratesSnapshot: state.rates!,
-      result: r,
-    );
-    expect(state.stoneRateFor(StoneKind.diamond, '700'), 70000);
-    expect(state.stoneRateFor(StoneKind.diamond, '750'), 75000);
-    expect(state.stoneRateFor(StoneKind.diamond, '850'), isNull);
-    expect(state.stoneRateFor(StoneKind.stone, '700'), isNull);
-    expect(state.stoneRateFor(StoneKind.diamond, null), 75000);
+    final input = parsed
+        .toInput(state.pricingDefaults, rateFor: state.stoneRateFor)
+        .copyWith(makingValue: 0, gst: const GstConfig(ratePercent: 3));
+    expect(input.stones.map((s) => s.ratePerCt), [70000, 75000, 85000]);
+    final r = state.engine.calculate(input, state.rates!.perGram).result!;
+    expect(r.goldValuePaise, 2413260); // 5.886 g × ₹4,100
+    expect(r.stoneLinePaise, [2660000, 825000, 18105000]);
+    expect(r.diamondValuePaise, 2660000 + 825000 + 18105000);
+    expect(r.subtotalPaise, 2413260 + 21590000);
   });
 
   test('records saved before multi-line stones still load', () {

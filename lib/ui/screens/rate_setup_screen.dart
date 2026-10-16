@@ -22,6 +22,8 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     for (final p in Purity.values) p: TextEditingController(),
   };
   final _errors = <Purity, String?>{};
+  final _multiplier = TextEditingController();
+  String? _multiplierError;
   bool _saving = false;
   bool _loaded = false;
 
@@ -30,6 +32,7 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     super.didChangeDependencies();
     if (_loaded) return;
     _loaded = true;
+    _multiplier.text = formatPercent(AppScope.read(context).tagRateMultiplier);
     final rates = AppScope.read(context).rates;
     if (rates != null) {
       for (final p in Purity.values) {
@@ -43,6 +46,7 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     for (final c in _controllers.values) {
       c.dispose();
     }
+    _multiplier.dispose();
     super.dispose();
   }
 
@@ -61,7 +65,15 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
         _errors[p] = _validate(_controllers[p]!.text);
       }
     });
-    if (_errors.values.any((e) => e != null)) return;
+    final m = parseNumber(_multiplier.text);
+    setState(() {
+      _multiplierError = (m == null || m.isNaN || m <= 0)
+          ? 'Enter a number greater than 0'
+          : null;
+    });
+    if (_errors.values.any((e) => e != null) || _multiplierError != null) {
+      return;
+    }
     setState(() => _saving = true);
     final state = AppScope.read(context);
     final rates = GoldRates(
@@ -71,6 +83,7 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
       updatedAt: state.now(),
     );
     await state.saveRates(rates);
+    await state.setTagRateMultiplier(m!);
     if (!mounted) return;
     setState(() => _saving = false);
     if (widget.firstRun) {
@@ -158,6 +171,43 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                 const SizedBox(height: 14),
               ],
               const SizedBox(height: 8),
+              const Text(
+                'Diamond rates printed on tags',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'A tag line like DIA\\0.38\\700 has a rate code (700). '
+                '₹ per carat = code × this multiplier.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+              const SizedBox(height: 10),
+              NumberField(
+                fieldKey: const Key('tagRateMultiplier'),
+                controller: _multiplier,
+                label: 'Tag rate multiplier',
+                unit: '×',
+                errorText: _multiplierError,
+                onChanged: (_) => setState(() => _multiplierError = null),
+              ),
+              Builder(
+                builder: (_) {
+                  final m = parseNumber(_multiplier.text);
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 4),
+                    child: Text(
+                      m == null || m.isNaN
+                          ? ''
+                          : 'Example: code 700 → ${formatInr(700 * m)} per carat',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
               FilledButton.icon(
                 key: const Key('saveRates'),
                 onPressed: _saving ? null : _save,

@@ -38,9 +38,18 @@ class AppState extends ChangeNotifier {
 
   JewelleryInput get pricingDefaults => _defaults.load();
 
-  /// Remembered ₹/ct for a stone line (see [PricingDefaultsRepository]).
+  /// ₹/ct to pre-fill for a stone line: tag rate code × multiplier, or the
+  /// last rate typed for that kind (see [PricingDefaultsRepository]).
   double? stoneRateFor(StoneKind kind, String? code) =>
       _defaults.rateFor(kind, code);
+
+  /// Multiplier from the rate code printed on tags to ₹ per carat.
+  double get tagRateMultiplier => _defaults.tagRateMultiplier;
+
+  Future<void> setTagRateMultiplier(double value) async {
+    await _defaults.setTagRateMultiplier(value);
+    notifyListeners();
+  }
 
   /// Saves (or updates, when [existingId] is given) a calculation.
   Future<CalculationRecord> saveCalculation({

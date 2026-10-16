@@ -26,12 +26,16 @@ class RatesRepository {
 }
 
 /// Remembers pricing inputs that are not printed on tags so staff don't
-/// retype them per item: GST rules, the last ₹/ct per stone kind, and the
-/// ₹/ct last used for each stone code printed on tags (e.g. "700").
+/// retype them per item (GST rules, last ₹/ct per stone kind), and the
+/// multiplier that turns a rate code printed on tags into ₹ per carat.
 class PricingDefaultsRepository {
   PricingDefaultsRepository(this._store);
   final KeyValueStore _store;
   static const _key = 'pricing_defaults_v2';
+  static const _multiplierKey = 'tag_rate_multiplier';
+
+  /// Tag rate codes are ₹ per carat ÷ 100 (e.g. DIA\0.38\700 → ₹70,000/ct).
+  static const defaultTagRateMultiplier = 100.0;
 
   Map<String, dynamic> _raw() {
     final raw = _store.get(_key);
@@ -43,18 +47,24 @@ class PricingDefaultsRepository {
     }
   }
 
-  static String _codeKey(StoneKind kind, String code) => '${kind.name}:$code';
+  double get tagRateMultiplier =>
+      double.tryParse(_store.get(_multiplierKey) ?? '') ??
+      defaultTagRateMultiplier;
 
-  /// Rate to pre-fill for a stone line. Lines with a tag code only get the
-  /// rate previously used for that same code; lines without a code get the
-  /// last rate used for their kind.
+  Future<void> setTagRateMultiplier(double value) =>
+      _store.put(_multiplierKey, value.toString());
+
+  /// ₹/ct for a rate code printed on a tag, or null if it isn't a number.
+  double? rateFromTagCode(String? code) {
+    final n = double.tryParse(code ?? '');
+    return n == null ? null : n * tagRateMultiplier;
+  }
+
+  /// Rate to pre-fill for a stone line: from its printed tag code when it
+  /// has one, otherwise the last rate used for that kind.
   double? rateFor(StoneKind kind, String? code) {
-    final raw = _raw();
-    if (code != null && code.isNotEmpty) {
-      return ((raw['codeRates'] as Map?)?[_codeKey(kind, code)] as num?)
-          ?.toDouble();
-    }
-    return ((raw['lastRate'] as Map?)?[kind.name] as num?)?.toDouble();
+    if (code != null && code.isNotEmpty) return rateFromTagCode(code);
+    return ((_raw()['lastRate'] as Map?)?[kind.name] as num?)?.toDouble();
   }
 
   /// Defaults for a new item: remembered GST rules and, for manual entry,
@@ -81,28 +91,19 @@ class PricingDefaultsRepository {
 
   Future<void> rememberFrom(JewelleryInput input) {
     final raw = _raw();
-    final codeRates = <String, dynamic>{
-      ...?(raw['codeRates'] as Map?)?.cast<String, dynamic>(),
-    };
     final lastRate = <String, dynamic>{
       ...?(raw['lastRate'] as Map?)?.cast<String, dynamic>(),
     };
     for (final line in input.stones) {
-      final rate = line.ratePerCt;
-      if (rate == null || !line.hasWeight) continue;
-      lastRate[line.kind.name] = rate;
-      final code = line.code;
-      if (code != null && code.isNotEmpty) {
-        codeRates[_codeKey(line.kind, code)] = rate;
+      // Rates that came from a tag code are not "typed" defaults.
+      if (line.ratePerCt == null || !line.hasWeight || line.code != null) {
+        continue;
       }
+      lastRate[line.kind.name] = line.ratePerCt;
     }
     return _store.put(
       _key,
-      jsonEncode({
-        'gst': input.gst.toJson(),
-        'lastRate': lastRate,
-        'codeRates': codeRates,
-      }),
+      jsonEncode({'gst': input.gst.toJson(), 'lastRate': lastRate}),
     );
   }
 }

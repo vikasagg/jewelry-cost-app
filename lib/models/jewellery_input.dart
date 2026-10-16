@@ -115,8 +115,9 @@ class StoneLine {
   /// Rate in ₹ per carat.
   final double? ratePerCt;
 
-  /// Extra code printed after the weight (quality / price code). Shown for
-  /// reference only; never used in the calculation.
+  /// Rate code printed after the weight (e.g. 700 in `DIA\\0.38\\700`).
+  /// It pre-fills [ratePerCt] (code × tag rate multiplier, ₹70,000/ct by
+  /// default); the calculation always uses [ratePerCt].
   final String? code;
 
   String get displayName {
