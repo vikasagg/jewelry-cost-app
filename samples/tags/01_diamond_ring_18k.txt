@@ -1,0 +1,8 @@
+SAMPLE JEWELLERS
+Item: Diamond Ring
+Tag No: DR-18-0425
+18KT
+G.W.: 10.250 g
+D.W.: 0.50 ct
+S.W.: 0.20 ct
+MC: Rs. 7,000
