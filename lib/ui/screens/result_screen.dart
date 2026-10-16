@@ -253,9 +253,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
   /// One line per stone group, e.g. "DIA 0.38 ct × ₹70,000.00 = ₹26,600.00".
   String? _stonesCaption(JewelleryInput i, PricingResult r, StoneKind kind) {
-    final excluded = kind == StoneKind.diamond
-        ? i.excludeDiamond
-        : i.excludeStone;
+    final excluded = i.isExcluded(kind);
     final lines = <String>[];
     for (var k = 0; k < i.stones.length; k++) {
       final s = i.stones[k];
@@ -371,6 +369,11 @@ class _ResultScreenState extends State<ResultScreen> {
                           label: 'Stone Weight',
                           value: '${i.stoneWeight.toStringAsFixed(2)} ct',
                         ),
+                      if (i.polkiWeight > 0)
+                        StatTile(
+                          label: 'Polki Weight',
+                          value: '${i.polkiWeight.toStringAsFixed(2)} ct',
+                        ),
                       if (i.grossWeight != null)
                         StatTile(
                           label: 'Gross Weight',
@@ -406,6 +409,12 @@ class _ResultScreenState extends State<ResultScreen> {
                       label: 'Stone value',
                       value: formatPaise(r.stoneValuePaise),
                       caption: _stonesCaption(i, r, StoneKind.stone),
+                    ),
+                  if (r.polkiValuePaise > 0)
+                    BreakdownRow(
+                      label: 'Polki value',
+                      value: formatPaise(r.polkiValuePaise),
+                      caption: _stonesCaption(i, r, StoneKind.polki),
                     ),
                   // Wastage is no longer used; shown only for old saved records.
                   if (r.wastagePaise > 0)

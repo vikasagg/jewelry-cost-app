@@ -251,10 +251,12 @@ class TagParser {
   // into "N", ")" or drops it entirely.
   static const _diamondLabel =
       r'DIAMONDS?(?:\s*W(?:EIGH)?T\.?)?|DIA\.?\s*W(?:EIGH)?T\.?|DIA|D\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|SOLITAIRE';
+  // "Polki\0.50\300" — uncut diamonds, priced as their own section.
+  static const _polkiLabel = r'POLKI(?:\s*W(?:EIGH)?T\.?)?';
   static const _fancyLabel = r'[A-Z@]{0,3}ANCY\s*CUT';
   // "Stn", "Stn.", "Stn.M" (stone) — priced like DIA lines: weight\code.
   static const _stoneLabel =
-      r'STN\.?(?:\s*M\b\.?)?|OTHER\s+STONES?(?:\s*W(?:EIGH)?T\.?)?|(?:COLOU?R(?:ED)?\s+)?STONES?(?:\s*W(?:EIGH)?T\.?)?|ST\.?\s*WT\.?|S\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|C\.?S\.?\s*WT\.?|CZ|PEARLS?|RUBY|EMERALD|SAPPHIRE|POLKI|KUNDAN|GEMS?(?:TONES?)?';
+      r'STN\.?(?:\s*M\b\.?)?|OTHER\s+STONES?(?:\s*W(?:EIGH)?T\.?)?|(?:COLOU?R(?:ED)?\s+)?STONES?(?:\s*W(?:EIGH)?T\.?)?|ST\.?\s*WT\.?|S\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|C\.?S\.?\s*WT\.?|CZ|PEARLS?|RUBY|EMERALD|SAPPHIRE|KUNDAN|GEMS?(?:TONES?)?';
   static const _makingLabel =
       r'(?:MAKING\s*CHARGES?|MAKING|LABOU?R\s*CHARGES?|LABOU?R|M\s?\.?\s?C\s?\.?)';
   static const _wastageLabel =
@@ -478,7 +480,7 @@ class TagParser {
 
   List<ParsedStone> _parseStones(String text, List<List<int>> consumed) {
     final re = RegExp(
-      '(?<![A-Z0-9])(?:(?<fancy>$_fancyLabel)|(?<dia>$_diamondLabel)|(?<stone>$_stoneLabel))'
+      '(?<![A-Z0-9])(?:(?<polki>$_polkiLabel)|(?<fancy>$_fancyLabel)|(?<dia>$_diamondLabel)|(?<stone>$_stoneLabel))'
       // separator: punctuation, or a backslash misread as N; may wrap a line
       r'[ \t]*(?:[:=\-–#\\/|()]|N(?=\s*[0-9.]))*[ \t]*\n?[ \t]*'
       r'(?<num>[0-9OoIl]*[.,][0-9OoIl]+|[0-9OoIl]+)'
@@ -496,11 +498,14 @@ class TagParser {
 
       final isFancy = m.namedGroup('fancy') != null;
       final isStone = m.namedGroup('stone') != null;
+      final isPolki = m.namedGroup('polki') != null;
       final rawLabel = (m.namedGroup('dia') ?? m.namedGroup('stone') ?? '')
           .toUpperCase()
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
-      final label = isFancy
+      final label = isPolki
+          ? 'POLKI'
+          : isFancy
           ? 'FANCY CUT'
           : rawLabel.startsWith('STN')
           ? 'STN' // "Stn.M" is treated as "Stn"
@@ -541,7 +546,11 @@ class TagParser {
           ),
           // FANCY CUT = fancy-shaped diamonds (confirmed with the retailer).
           kind: ParsedField(
-            isStone ? StoneKind.stone : StoneKind.diamond,
+            isPolki
+                ? StoneKind.polki
+                : isStone
+                ? StoneKind.stone
+                : StoneKind.diamond,
             FieldConfidence.high,
           ),
         ),

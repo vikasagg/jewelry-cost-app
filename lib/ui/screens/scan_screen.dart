@@ -392,7 +392,11 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         for (final st in p.stones)
           _DetectedRow<double>(
-            '${st.label}${st.kind.value == StoneKind.stone ? ' (stone)' : ''}'
+            '${st.label}${switch (st.kind.value) {
+              StoneKind.stone => ' (stone)',
+              StoneKind.polki => ' (polki)',
+              _ => '',
+            }}'
             '${st.code == null ? '' : ' · rate ${st.code}'}',
             st.kind.needsConfirmation
                 ? ParsedField(

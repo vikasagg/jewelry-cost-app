@@ -44,6 +44,11 @@ String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
           ? 'Stone value: ${formatPaise(r.stoneValuePaise)}\n'
           : '',
     )
+    ..write(
+      r.polkiValuePaise > 0
+          ? 'Polki value: ${formatPaise(r.polkiValuePaise)}\n'
+          : '',
+    )
     ..writeln('Making charges: ${formatPaise(r.makingPaise)}')
     ..writeln('Subtotal: ${formatPaise(r.subtotalPaise)}')
     ..writeln('Taxable subtotal: ${formatPaise(r.taxableBasePaise)}');

@@ -343,6 +343,25 @@ void main() {
     });
   });
 
+  group('Polki lines', () {
+    test('Polki\\0.50\\300 is its own kind with a tag rate code', () {
+      final t = parser.parse(
+        'G.Wt :8.100 22K\nN.Wt :7.900\nDIA\\0.25\\700\nPolki\\0.50\\300\nPOLKI/0.25/250\n',
+      );
+      expect(t.stones.map((s) => s.label), ['DIA', 'POLKI', 'POLKI']);
+      expect(t.stones.map((s) => s.kind.value), [
+        StoneKind.diamond,
+        StoneKind.polki,
+        StoneKind.polki,
+      ]);
+      expect(t.stones.map((s) => s.weight.value), [0.25, 0.50, 0.25]);
+      expect(t.stones.map((s) => s.code), ['700', '300', '250']);
+      // 8.100 − 7.900 = 0.200 g = 1.00 ct = 0.25 + 0.50 + 0.25
+      expect(t.weightBalance!.balances, isTrue);
+      expect(t.uncertainFields, isEmpty);
+    });
+  });
+
   group('sample tags', () {
     test('01 diamond ring 18K', () {
       final t = parser.parse(sample('01_diamond_ring_18k.txt'));

@@ -491,28 +491,40 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
 
               // ------------------------------------------- diamonds & stones
               const SizedBox(height: 14),
-              const SectionTitle('Diamonds & stones'),
-              for (var i = 0; i < _stones.length; i++) ...[
-                _stoneCard(i),
-                const SizedBox(height: 10),
+              const SectionTitle('Diamonds, stones & polki'),
+              // One sub-section per kind; each line keeps its index.
+              for (final kind in StoneKind.values) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        switch (kind) {
+                          StoneKind.diamond => 'Diamonds',
+                          StoneKind.stone => 'Stones',
+                          StoneKind.polki => 'Polki',
+                        },
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.goldDeep,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      key: Key('add_${kind.name}'),
+                      onPressed: () => _addStone(kind),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: Text('Add ${kind.label.toLowerCase()}'),
+                    ),
+                  ],
+                ),
+                for (var i = 0; i < _stones.length; i++)
+                  if (_stones[i].kind == kind) ...[
+                    _stoneCard(i),
+                    const SizedBox(height: 8),
+                  ],
+                const SizedBox(height: 4),
               ],
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    key: const Key('addDiamond'),
-                    onPressed: () => _addStone(StoneKind.diamond),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Diamond line'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _addStone(StoneKind.stone),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Other stone line'),
-                  ),
-                ],
-              ),
               _weightBalance(),
               _excludeSwitch(
                 'Exclude diamond value',
@@ -523,7 +535,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 }),
               ),
               _excludeSwitch(
-                'Exclude other stone value',
+                'Exclude stone value',
                 _excludeStone,
                 (v) => setState(() {
                   _excludeStone = v;
@@ -644,9 +656,11 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   Widget _stoneCard(int i) {
     final row = _stones[i];
     final kindKey = 'stone.$i.kind';
-    final excluded = row.kind == StoneKind.diamond
-        ? _excludeDiamond
-        : _excludeStone;
+    final excluded = switch (row.kind) {
+      StoneKind.diamond => _excludeDiamond,
+      StoneKind.stone => _excludeStone,
+      StoneKind.polki => false,
+    };
     return Card(
       key: ValueKey(row),
       child: Padding(

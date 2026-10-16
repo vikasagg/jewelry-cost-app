@@ -24,7 +24,8 @@ enum WastageMethod {
 enum PriceComponent {
   gold('Gold value'),
   diamond('Diamond value'),
-  stone('Other stone value'),
+  stone('Stone value'),
+  polki('Polki value'),
   wastage('Wastage charges'),
   making('Making charges');
 
@@ -40,6 +41,7 @@ class GstConfig {
       PriceComponent.gold,
       PriceComponent.diamond,
       PriceComponent.stone,
+      PriceComponent.polki,
       PriceComponent.wastage,
       PriceComponent.making,
     },
@@ -89,7 +91,8 @@ class GstConfig {
 /// Whether a stone line is priced as diamond or as other stone.
 enum StoneKind {
   diamond('Diamond'),
-  stone('Other stone');
+  stone('Stone'),
+  polki('Polki');
 
   const StoneKind(this.label);
   final String label;
@@ -221,6 +224,17 @@ class JewelleryInput {
   /// Total other-stone weight in carats.
   double get stoneWeight =>
       linesOf(StoneKind.stone).fold(0.0, (a, s) => a + (s.weightCt ?? 0));
+
+  /// Total polki weight in carats.
+  double get polkiWeight =>
+      linesOf(StoneKind.polki).fold(0.0, (a, s) => a + (s.weightCt ?? 0));
+
+  /// Whether lines of [kind] are excluded from the price.
+  bool isExcluded(StoneKind kind) => switch (kind) {
+    StoneKind.diamond => excludeDiamond,
+    StoneKind.stone => excludeStone,
+    StoneKind.polki => false,
+  };
 
   String get displayName {
     final parts = [
