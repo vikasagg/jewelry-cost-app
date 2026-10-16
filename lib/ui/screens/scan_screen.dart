@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/money.dart';
@@ -12,6 +11,7 @@ import '../../ocr/tag_parser.dart';
 import '../../models/purity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'crop_screen.dart';
 import 'details_form_screen.dart';
 
 /// Capture → crop → enhance → OCR → review detected fields.
@@ -28,12 +28,18 @@ class _ScanScreenState extends State<ScanScreen> {
   OcrService? _ocr;
 
   ImageSource? _lastSource;
+
+  /// Full captured image (orientation-normalised), kept for re-cropping.
+  Uint8List? _original;
+
+  /// Image sent to OCR (cropped/rotated).
   Uint8List? _preview;
   bool _enhance = true;
   bool _busy = false;
   String? _status;
   String? _error;
   ParsedTag? _parsed;
+  String? _rotationNote;
 
   @override
   void dispose() {
@@ -81,15 +87,9 @@ class _ScanScreenState extends State<ScanScreen> {
       return;
     }
 
-    // Optional crop so OCR focuses on the tag itself.
-    final cropped = await _crop(file.path);
-    final bytes = cropped != null
-        ? await cropped.readAsBytes()
-        : await file.readAsBytes();
-
     setState(() => _status = 'Preparing image…');
     try {
-      _preview = await _enhancer.normalise(bytes);
+      _original = await _enhancer.normalise(await file.readAsBytes());
     } catch (e) {
       setState(() {
         _status = null;
@@ -97,53 +97,63 @@ class _ScanScreenState extends State<ScanScreen> {
       });
       return;
     }
+    await _cropAndScan();
+  }
+
+  /// Opens the crop step on the full captured image, then runs OCR.
+  Future<void> _cropAndScan() async {
+    final original = _original;
+    if (original == null || !mounted) return;
+    setState(() => _status = null);
+    final cropped = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(builder: (_) => CropScreen(image: original)),
+    );
+    if (cropped == null || !mounted) return; // cancelled: keep current state
+    _preview = cropped;
     await _runOcr();
   }
 
-  Future<CroppedFile?> _crop(String path) async {
-    try {
-      return await ImageCropper().cropImage(
-        sourcePath: path,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'Crop to the tag',
-            toolbarColor: AppColors.gold,
-            toolbarWidgetColor: Colors.white,
-            activeControlsWidgetColor: AppColors.gold,
-            lockAspectRatio: false,
-            initAspectRatio: CropAspectRatioPreset.original,
-          ),
-          IOSUiSettings(
-            title: 'Crop to the tag',
-            aspectRatioLockEnabled: false,
-          ),
-          WebUiSettings(context: context, presentStyle: WebPresentStyle.dialog),
-        ],
-      );
-    } catch (e) {
-      debugPrint('Crop unavailable, using full image: $e');
-      return null;
-    }
-  }
-
-  Future<void> _runOcr() async {
+  /// Runs OCR. With [autoRotate], a sideways or upside-down photo is
+  /// detected by also trying 90°/270°/180° when the first pass finds too
+  /// little, keeping the orientation whose text yields the most fields.
+  Future<void> _runOcr({bool autoRotate = true}) async {
     final image = _preview;
     if (image == null) return;
     setState(() {
       _busy = true;
       _error = null;
       _parsed = null;
+      _rotationNote = null;
       _status = _enhance ? 'Enhancing and reading text…' : 'Reading text…';
     });
     try {
-      final input = _enhance ? await _enhancer.enhance(image) : image;
       _ocr ??= OcrService();
-      final text = await _ocr!.recognize(input);
-      final parsed = const TagParser().parse(text);
+      ({int deg, Uint8List img, String text, ParsedTag tag, int score})? best;
+      for (final deg in autoRotate ? const [0, 90, 270, 180] : const [0]) {
+        if (deg != 0) {
+          setState(
+            () => _status = 'Text unclear — trying the image rotated $deg°…',
+          );
+        }
+        final rotated = deg == 0 ? image : await _enhancer.rotate(image, deg);
+        final input = _enhance ? await _enhancer.enhance(rotated) : rotated;
+        final text = await _ocr!.recognize(input);
+        final tag = const TagParser().parse(text);
+        final score = scoreParsedTag(tag);
+        if (best == null || score > best.score) {
+          best = (deg: deg, img: rotated, text: text, tag: tag, score: score);
+        }
+        if (tag.goldWeight.isFound && tag.purity.isFound) break;
+      }
+      final b = best!;
       setState(() {
-        _parsed = parsed;
+        _parsed = b.tag;
         _status = null;
-        if (text.trim().isEmpty) {
+        if (b.deg != 0) {
+          _preview = b.img;
+          _rotationNote = 'Tag was sideways — rotated ${b.deg}° automatically';
+        }
+        if (b.text.trim().isEmpty) {
           _error =
               'No text found. Retake with the tag flat, in focus and well lit, '
               'or enter details manually.';
@@ -157,6 +167,15 @@ class _ScanScreenState extends State<ScanScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Manual 90° rotation (when automatic detection picks wrongly).
+  Future<void> _rotateAndRescan() async {
+    final image = _preview;
+    if (image == null) return;
+    setState(() => _status = 'Rotating…');
+    _preview = await _enhancer.rotate(image, 90);
+    await _runOcr(autoRotate: false);
   }
 
   Future<void> _showPermissionHelp(ImageSource source) => showDialog<void>(
@@ -301,24 +320,52 @@ class _ScanScreenState extends State<ScanScreen> {
         value: _enhance,
         onChanged: _busy ? null : (v) => setState(() => _enhance = v),
       ),
-      Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _busy
-                  ? null
-                  : () => _capture(_lastSource ?? ImageSource.camera),
-              icon: const Icon(Icons.replay),
-              label: const Text('Retake'),
-            ),
+      if (_rotationNote != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.screen_rotation_alt,
+                size: 18,
+                color: AppColors.ok,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _rotationNote!,
+                  style: const TextStyle(color: AppColors.ok),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _busy ? null : _runOcr,
-              icon: const Icon(Icons.document_scanner_outlined),
-              label: const Text('Rescan'),
-            ),
+        ),
+      TileGrid(
+        minTileWidth: 150,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _busy
+                ? null
+                : () => _capture(_lastSource ?? ImageSource.camera),
+            icon: const Icon(Icons.replay),
+            label: const Text('Retake'),
+          ),
+          OutlinedButton.icon(
+            key: const Key('recrop'),
+            onPressed: _busy ? null : _cropAndScan,
+            icon: const Icon(Icons.crop),
+            label: const Text('Crop'),
+          ),
+          OutlinedButton.icon(
+            key: const Key('rotate'),
+            onPressed: _busy ? null : _rotateAndRescan,
+            icon: const Icon(Icons.rotate_right),
+            label: const Text('Rotate'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _runOcr,
+            icon: const Icon(Icons.document_scanner_outlined),
+            label: const Text('Rescan'),
           ),
         ],
       ),
@@ -338,16 +385,40 @@ class _ScanScreenState extends State<ScanScreen> {
           p.grossWeight,
           (v) => '${v.toStringAsFixed(3)} g',
         ),
-        _DetectedRow<double>(
-          'Diamond weight',
-          p.diamondWeight,
-          (v) => '${v.toStringAsFixed(2)} ct',
-        ),
-        _DetectedRow<double>(
-          'Other stone weight',
-          p.stoneWeight,
-          (v) => '${v.toStringAsFixed(2)} ct',
-        ),
+        if (p.stones.isEmpty)
+          const _DetectedRow<double>(
+            'Diamonds / stones',
+            ParsedField.missing(),
+            _noFormat,
+          ),
+        for (final st in p.stones)
+          _DetectedRow<double>(
+            '${st.label}${st.kind.value == StoneKind.stone ? ' (stone)' : ''}'
+            '${st.code == null ? '' : ' · code ${st.code}'}',
+            st.kind.needsConfirmation
+                ? ParsedField(
+                    st.weight.value,
+                    FieldConfidence.low,
+                    note: st.kind.note,
+                  )
+                : st.weight,
+            (v) => '${v.toStringAsFixed(2)} ct',
+          ),
+        if (p.weightBalance != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              p.weightBalance!.balances
+                  ? '✓ Weights balance: ${p.weightBalance!.describe()}'
+                  : '⚠ Weights do not balance: ${p.weightBalance!.describe()}',
+              style: TextStyle(
+                fontSize: 13,
+                color: p.weightBalance!.balances
+                    ? AppColors.ok
+                    : AppColors.warn,
+              ),
+            ),
+          ),
         _DetectedRow<double>(
           'Making charges',
           p.makingValue,
@@ -363,6 +434,18 @@ class _ScanScreenState extends State<ScanScreen> {
               : '${formatInput(v)}%',
         ),
         const SizedBox(height: 8),
+        if (p.unreadStoneWeightG != null) ...[
+          _Banner(
+            text:
+                'Gross − net weight is ${p.unreadStoneWeightG!.toStringAsFixed(3)} g '
+                '(≈ ${(p.unreadStoneWeightG! / 0.2).toStringAsFixed(2)} ct), so this '
+                'item likely has stones, but no stone lines were read. Tap Crop '
+                'to frame only the tag and rescan, or add stone lines manually.',
+            color: AppColors.warn,
+            icon: Icons.diamond_outlined,
+          ),
+          const SizedBox(height: 8),
+        ],
         if (p.uncertainFields.isNotEmpty || p.missingRequired.isNotEmpty)
           const _Banner(
             text:
@@ -400,6 +483,8 @@ class _ScanScreenState extends State<ScanScreen> {
     ];
   }
 }
+
+String _noFormat(double v) => '$v';
 
 class _DetectedRow<T> extends StatelessWidget {
   const _DetectedRow(this.label, this.field, this.format);

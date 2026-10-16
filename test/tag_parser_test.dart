@@ -7,6 +7,11 @@ import 'package:jewellery_cost/ocr/tag_parser.dart';
 
 String sample(String name) => File('samples/tags/$name').readAsStringSync();
 
+ParsedStone dia(ParsedTag t) =>
+    t.stones.firstWhere((s) => s.kind.value == StoneKind.diamond);
+ParsedStone stn(ParsedTag t) =>
+    t.stones.firstWhere((s) => s.kind.value == StoneKind.stone);
+
 void main() {
   const parser = TagParser();
 
@@ -79,14 +84,14 @@ void main() {
 
     test('diamond & stone weights in carats', () {
       final t = parser.parse('DW 0.50 ct\nStone Wt: 0.20 cts\nGW 3.1 g');
-      expect(t.diamondWeight.value, 0.5);
-      expect(t.stoneWeight.value, 0.2);
+      expect(dia(t).weight.value, 0.5);
+      expect(stn(t).weight.value, 0.2);
       expect(t.goldWeight.value, 3.1);
-      expect(t.diamondWeight.confidence, FieldConfidence.high);
+      expect(dia(t).weight.confidence, FieldConfidence.high);
     });
 
     test('leading-decimal values like ".35" are read correctly', () {
-      expect(parser.parse('S.W. .35 ct').stoneWeight.value, 0.35);
+      expect(stn(parser.parse('S.W. .35 ct')).weight.value, 0.35);
     });
 
     test('value on the line after its label', () {
@@ -97,7 +102,7 @@ void main() {
       final t = parser.parse(sample('07_missing_gold.txt'));
       expect(t.goldWeight.isFound, isFalse);
       expect(t.missingRequired, contains('goldWeight'));
-      expect(t.diamondWeight.value, 0.22);
+      expect(dia(t).weight.value, 0.22);
     });
 
     test('unreadable characters are substituted but flagged', () {
@@ -175,6 +180,125 @@ void main() {
     });
   });
 
+  group('real tag: G.Wt / N.Wt / DIA\\weight\\code lines (08)', () {
+    void expectStones(ParsedTag t) {
+      expect(t.stones.map((s) => s.label), ['DIA', 'DIA', 'FANCY CUT']);
+      expect(t.stones.map((s) => s.weight.value), [0.38, 0.11, 2.13]);
+      expect(t.stones.map((s) => s.code), ['700', '750', '850']);
+    }
+
+    test('clean text', () {
+      final t = parser.parse(sample('08_real_14k_diamond.txt'));
+      expect(t.purity.value, Purity.k14);
+      expect(t.goldWeight.value, 5.886); // N.Wt is the gold weight
+      expect(t.grossWeight.value, 6.410);
+      expectStones(t);
+      // 6.410 − 5.886 = 0.524 g = 2.62 ct = 0.38 + 0.11 + 2.13
+      expect(t.weightBalance!.balances, isTrue);
+      expect(t.goldWeight.confidence, FieldConfidence.high);
+      expect(t.grossWeight.confidence, FieldConfidence.high);
+      // Only open question: are "FANCY CUT" diamonds or other stones?
+      expect(t.uncertainFields.keys, ['stone.2.kind']);
+    });
+
+    // Actual Tesseract output for the photo after crop + rotate.
+    test('OCR: backslash lost before code ("2.13850")', () {
+      final t = parser.parse(
+        'RO AAAS LICORICE ECE pg ~~)\nJ G.Wt :6.410 14K\n7 N.Wt:5.886\n'
+        '_ DIA\\0.38\\700\n~ DIA\\0.11\\750\nCS ENEANCY CUT) 2.13850\n',
+      );
+      expect(t.purity.value, Purity.k14);
+      expect(t.goldWeight.value, 5.886);
+      expectStones(t);
+      // The 2.13 / 850 split is confirmed by the weight balance.
+      expect(t.stones[2].weight.confidence, FieldConfidence.high);
+      expect(t.uncertainFields.keys, ['stone.2.kind']);
+    });
+
+    test('OCR: backslash read as N and as 1 ("DIAN0.11", "2.131850")', () {
+      final t = parser.parse(
+        '3 G.Wt :6.410 14K\n7 N.Wt:5.886\n_ DIA\\0.38\\700\n'
+        '. DIAN0.11\\750\nEna ANCY CUT) 2.131850\n',
+      );
+      expectStones(t);
+      expect(t.weightBalance!.balances, isTrue);
+    });
+
+    test('OCR via the web app (crop + auto-rotate): stray "|", "~#N"', () {
+      final t = parser.parse(
+        '4 G.Wt :6.410 14K :\n© N.Wt:5.886 :\n\'  DIA\\0.38\\700 |\n'
+        '| DIA\\0.11\\750\n~#NEANCY CUT) 2.13\\850 |\n',
+      );
+      expect(t.purity.value, Purity.k14);
+      expect(t.goldWeight.value, 5.886);
+      expect(t.grossWeight.value, 6.410);
+      expectStones(t);
+      expect(t.uncertainFields.keys, ['stone.2.kind']);
+    });
+
+    test(
+      'OCR: G.Wt label lost → no balance, unclear split must be confirmed',
+      () {
+        final t = parser.parse(
+          'Eat 16.410 14K\nN.Wt :5.886\n. DIA\\0.38\\700\nDIA\\0.11\\750\n'
+          'S@ANCY CUT\\ 2.131850\n',
+        );
+        expect(t.goldWeight.value, 5.886);
+        expect(t.goldWeight.confidence, FieldConfidence.high);
+        expect(t.grossWeight.isFound, isFalse); // never guessed from "16.410"
+        expectStones(t);
+        expect(
+          t.uncertainFields.keys,
+          containsAll(['stone.2.weight', 'stone.2.kind']),
+        );
+      },
+    );
+
+    test('weights that do not balance are flagged', () {
+      final t = parser.parse(
+        'G.Wt :6.410 14K\nN.Wt :5.886\nDIA\\0.38\\700\nDIA\\0.11\\750\n',
+      );
+      expect(t.weightBalance!.balances, isFalse);
+      expect(
+        t.uncertainFields.keys,
+        containsAll(['goldWeight', 'grossWeight', 'stone.0.weight']),
+      );
+    });
+
+    test('rotation scoring prefers the upright reading', () {
+      // Unrotated photo: Tesseract returns noise.
+      final sideways = parser.parse(
+        'SOILY LAT oh Ded BS 7\nGEN AN A Te . 4 Fo Sal',
+      );
+      final upright = parser.parse(sample('08_real_14k_diamond.txt'));
+      expect(scoreParsedTag(upright), greaterThan(scoreParsedTag(sideways)));
+      expect(scoreParsedTag(sideways), 0);
+    });
+
+    test('stone weight implied by G.Wt − N.Wt but no stone lines read', () {
+      final t = parser.parse('G.Wt :6.410 14K\nN.Wt :5.886\nnoise noise');
+      expect(t.unreadStoneWeightG, closeTo(0.524, 1e-9));
+      expect(
+        parser.parse(sample('08_real_14k_diamond.txt')).unreadStoneWeightG,
+        isNull,
+      );
+    });
+
+    test('codes 700/750/850 are never read as hallmark purity', () {
+      final t = parser.parse('N.Wt :5.886\nDIA\\0.38\\750\n');
+      expect(t.purity.isFound, isFalse);
+    });
+
+    test('remembered per-code rates are applied, unknown codes left empty', () {
+      final t = parser.parse(sample('08_real_14k_diamond.txt'));
+      final input = t.toInput(
+        const JewelleryInput(),
+        rateFor: (kind, code) => code == '700' ? 70000 : null,
+      );
+      expect(input.stones.map((s) => s.ratePerCt), [70000, null, null]);
+    });
+  });
+
   group('sample tags', () {
     test('01 diamond ring 18K', () {
       final t = parser.parse(sample('01_diamond_ring_18k.txt'));
@@ -182,8 +306,8 @@ void main() {
       expect(t.tagNumber.value, 'DR-18-0425');
       expect(t.purity.value, Purity.k18);
       expect(t.goldWeight.value, 10.25);
-      expect(t.diamondWeight.value, 0.5);
-      expect(t.stoneWeight.value, 0.2);
+      expect(dia(t).weight.value, 0.5);
+      expect(stn(t).weight.value, 0.2);
       expect(t.makingValue.value, 7000);
       expect(t.uncertainFields, isEmpty);
     });
@@ -198,7 +322,7 @@ void main() {
       expect(t.makingValue.value, 12);
       expect(t.wastageMethod.value, WastageMethod.percent);
       expect(t.wastageValue.value, 8);
-      expect(t.diamondWeight.isFound, isFalse);
+      expect(t.stones, isEmpty);
     });
 
     test('03 pendant 14K (lower-case, abbreviations)', () {
@@ -206,8 +330,8 @@ void main() {
       expect(t.purity.value, Purity.k14);
       expect(t.tagNumber.value, 'P14-302');
       expect(t.goldWeight.value, 3.12);
-      expect(t.diamondWeight.value, 0.12);
-      expect(t.stoneWeight.value, 0.35);
+      expect(dia(t).weight.value, 0.12);
+      expect(stn(t).weight.value, 0.35);
       expect(t.makingValue.value, 1500);
     });
 
@@ -244,12 +368,11 @@ void main() {
     test('toInput keeps defaults for fields not on the tag', () {
       final t = parser.parse(sample('01_diamond_ring_18k.txt'));
       final input = t.toInput(
-        const JewelleryInput(
-          diamondRate: 30000,
-          gst: GstConfig(ratePercent: 3),
-        ),
+        const JewelleryInput(gst: GstConfig(ratePercent: 3)),
+        rateFor: (kind, code) => kind == StoneKind.diamond ? 30000 : null,
       );
-      expect(input.diamondRate, 30000);
+      expect(input.stones.first.ratePerCt, 30000);
+      expect(input.stones.first.weightCt, 0.5);
       expect(input.gst.ratePercent, 3);
       expect(input.goldWeight, 10.25);
     });

@@ -18,11 +18,17 @@ String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
   if (i.grossWeight != null) {
     b.writeln('Gross weight: ${i.grossWeight!.toStringAsFixed(3)} g');
   }
+  for (var k = 0; k < i.stones.length; k++) {
+    final s = i.stones[k];
+    if (!s.hasWeight) continue;
+    final value = k < r.stoneLinePaise.length ? r.stoneLinePaise[k] : 0;
+    b.writeln(
+      '${s.displayName} (${s.kind.label.toLowerCase()}): '
+      '${s.weightCt!.toStringAsFixed(2)} ct'
+      '${s.ratePerCt == null ? '' : ' × ${formatInr(s.ratePerCt!)}/ct = ${formatPaise(value)}'}',
+    );
+  }
   b
-    ..writeln('Diamond weight: ${(i.diamondWeight ?? 0).toStringAsFixed(2)} ct')
-    ..writeln(
-      'Other stone weight: ${(i.stoneWeight ?? 0).toStringAsFixed(2)} ct',
-    )
     ..writeln('')
     ..writeln(
       'Gold rate (${r.purity.label}): ${formatInr(r.goldRatePerGram)}/g '

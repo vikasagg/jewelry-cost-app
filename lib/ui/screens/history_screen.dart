@@ -156,9 +156,8 @@ class _RecordCard extends StatelessWidget {
     final i = record.input;
     final parts = [
       '${r.purity.label} · ${i.goldWeight!.toStringAsFixed(3)} g',
-      if ((i.diamondWeight ?? 0) > 0)
-        'D ${i.diamondWeight!.toStringAsFixed(2)} ct',
-      if ((i.stoneWeight ?? 0) > 0) 'S ${i.stoneWeight!.toStringAsFixed(2)} ct',
+      if (i.diamondWeight > 0) 'D ${i.diamondWeight.toStringAsFixed(2)} ct',
+      if (i.stoneWeight > 0) 'S ${i.stoneWeight.toStringAsFixed(2)} ct',
     ];
     return Card(
       child: InkWell(

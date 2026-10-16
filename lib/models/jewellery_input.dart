@@ -85,6 +85,81 @@ class GstConfig {
   );
 }
 
+/// Whether a stone line is priced as diamond or as other stone.
+enum StoneKind {
+  diamond('Diamond'),
+  stone('Other stone');
+
+  const StoneKind(this.label);
+  final String label;
+}
+
+/// One group of stones on a tag, e.g. `DIA\0.38\700` → 0.38 ct, code 700.
+class StoneLine {
+  const StoneLine({
+    required this.kind,
+    this.label,
+    this.weightCt,
+    this.ratePerCt,
+    this.code,
+  });
+
+  final StoneKind kind;
+
+  /// Label as printed on the tag ("DIA", "FANCY CUT"…), if any.
+  final String? label;
+
+  /// Weight in carats.
+  final double? weightCt;
+
+  /// Rate in ₹ per carat.
+  final double? ratePerCt;
+
+  /// Extra code printed after the weight (quality / price code). Shown for
+  /// reference only; never used in the calculation.
+  final String? code;
+
+  String get displayName {
+    final l = label?.trim();
+    return (l == null || l.isEmpty) ? kind.label : l;
+  }
+
+  bool get hasWeight => (weightCt ?? 0) > 0;
+
+  StoneLine copyWith({
+    StoneKind? kind,
+    String? label,
+    double? weightCt,
+    double? ratePerCt,
+    String? code,
+  }) => StoneLine(
+    kind: kind ?? this.kind,
+    label: label ?? this.label,
+    weightCt: weightCt ?? this.weightCt,
+    ratePerCt: ratePerCt ?? this.ratePerCt,
+    code: code ?? this.code,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'kind': kind.name,
+    'label': label,
+    'weightCt': weightCt,
+    'ratePerCt': ratePerCt,
+    'code': code,
+  };
+
+  factory StoneLine.fromJson(Map<String, dynamic> j) => StoneLine(
+    kind: StoneKind.values.firstWhere(
+      (k) => k.name == j['kind'],
+      orElse: () => StoneKind.diamond,
+    ),
+    label: j['label'] as String?,
+    weightCt: (j['weightCt'] as num?)?.toDouble(),
+    ratePerCt: (j['ratePerCt'] as num?)?.toDouble(),
+    code: j['code'] as String?,
+  );
+}
+
 /// Everything needed to price one jewellery item. Weights/rates are nullable
 /// so "not entered" can be distinguished from an explicit zero.
 class JewelleryInput {
@@ -94,11 +169,8 @@ class JewelleryInput {
     this.purity,
     this.goldWeight,
     this.grossWeight,
-    this.diamondWeight,
-    this.diamondRate,
+    this.stones = const [],
     this.excludeDiamond = false,
-    this.stoneWeight,
-    this.stoneRate,
     this.excludeStone = false,
     this.makingMethod = MakingMethod.fixed,
     this.makingValue,
@@ -112,25 +184,17 @@ class JewelleryInput {
   final String? tagNumber;
   final Purity? purity;
 
-  /// Gold (metal) weight in grams used for pricing.
+  /// Gold (metal / net) weight in grams used for pricing.
   final double? goldWeight;
 
   /// Gross jewellery weight in grams (metal + stones). Informational only;
   /// never used for pricing and never auto-derived.
   final double? grossWeight;
 
-  /// Diamond weight in carats.
-  final double? diamondWeight;
+  /// Diamond and other-stone groups, each with its own weight and rate.
+  final List<StoneLine> stones;
 
-  /// Diamond rate in ₹ per carat.
-  final double? diamondRate;
   final bool excludeDiamond;
-
-  /// Other stone weight in carats.
-  final double? stoneWeight;
-
-  /// Other stone rate in ₹ per carat.
-  final double? stoneRate;
   final bool excludeStone;
 
   final MakingMethod makingMethod;
@@ -143,6 +207,17 @@ class JewelleryInput {
   final double? wastageWeight;
 
   final GstConfig gst;
+
+  Iterable<StoneLine> linesOf(StoneKind kind) =>
+      stones.where((s) => s.kind == kind);
+
+  /// Total diamond weight in carats.
+  double get diamondWeight =>
+      linesOf(StoneKind.diamond).fold(0.0, (a, s) => a + (s.weightCt ?? 0));
+
+  /// Total other-stone weight in carats.
+  double get stoneWeight =>
+      linesOf(StoneKind.stone).fold(0.0, (a, s) => a + (s.weightCt ?? 0));
 
   String get displayName {
     final parts = [
@@ -158,11 +233,8 @@ class JewelleryInput {
     Purity? purity,
     double? goldWeight,
     double? grossWeight,
-    double? diamondWeight,
-    double? diamondRate,
+    List<StoneLine>? stones,
     bool? excludeDiamond,
-    double? stoneWeight,
-    double? stoneRate,
     bool? excludeStone,
     MakingMethod? makingMethod,
     double? makingValue,
@@ -176,11 +248,8 @@ class JewelleryInput {
     purity: purity ?? this.purity,
     goldWeight: goldWeight ?? this.goldWeight,
     grossWeight: grossWeight ?? this.grossWeight,
-    diamondWeight: diamondWeight ?? this.diamondWeight,
-    diamondRate: diamondRate ?? this.diamondRate,
+    stones: stones ?? this.stones,
     excludeDiamond: excludeDiamond ?? this.excludeDiamond,
-    stoneWeight: stoneWeight ?? this.stoneWeight,
-    stoneRate: stoneRate ?? this.stoneRate,
     excludeStone: excludeStone ?? this.excludeStone,
     makingMethod: makingMethod ?? this.makingMethod,
     makingValue: makingValue ?? this.makingValue,
@@ -196,11 +265,8 @@ class JewelleryInput {
     'purity': purity?.name,
     'goldWeight': goldWeight,
     'grossWeight': grossWeight,
-    'diamondWeight': diamondWeight,
-    'diamondRate': diamondRate,
+    'stones': stones.map((s) => s.toJson()).toList(),
     'excludeDiamond': excludeDiamond,
-    'stoneWeight': stoneWeight,
-    'stoneRate': stoneRate,
     'excludeStone': excludeStone,
     'makingMethod': makingMethod.name,
     'makingValue': makingValue,
@@ -212,17 +278,35 @@ class JewelleryInput {
 
   factory JewelleryInput.fromJson(Map<String, dynamic> j) {
     double? d(String k) => (j[k] as num?)?.toDouble();
+    final stones = j['stones'] is List
+        ? (j['stones'] as List)
+              .map(
+                (s) => StoneLine.fromJson((s as Map).cast<String, dynamic>()),
+              )
+              .toList()
+        : <StoneLine>[
+            // Records saved before multi-line stones existed.
+            if (d('diamondWeight') != null || d('diamondRate') != null)
+              StoneLine(
+                kind: StoneKind.diamond,
+                weightCt: d('diamondWeight'),
+                ratePerCt: d('diamondRate'),
+              ),
+            if (d('stoneWeight') != null || d('stoneRate') != null)
+              StoneLine(
+                kind: StoneKind.stone,
+                weightCt: d('stoneWeight'),
+                ratePerCt: d('stoneRate'),
+              ),
+          ];
     return JewelleryInput(
       itemName: j['itemName'] as String?,
       tagNumber: j['tagNumber'] as String?,
       purity: Purity.fromName(j['purity'] as String?),
       goldWeight: d('goldWeight'),
       grossWeight: d('grossWeight'),
-      diamondWeight: d('diamondWeight'),
-      diamondRate: d('diamondRate'),
+      stones: stones,
       excludeDiamond: j['excludeDiamond'] as bool? ?? false,
-      stoneWeight: d('stoneWeight'),
-      stoneRate: d('stoneRate'),
       excludeStone: j['excludeStone'] as bool? ?? false,
       makingMethod: MakingMethod.values.firstWhere(
         (m) => m.name == j['makingMethod'],

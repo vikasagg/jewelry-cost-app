@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show Rect;
 import 'package:image/image.dart' as img;
 
 /// Basic pre-processing that helps OCR on printed tags: fixes EXIF rotation,
@@ -10,6 +11,39 @@ class ImageEnhancer {
 
   /// Normalises orientation/size only (no colour changes) for previews.
   Future<Uint8List> normalise(Uint8List bytes) => compute(_normalise, bytes);
+
+  /// Crops to a rectangle given as fractions (0–1) of width/height.
+  Future<Uint8List> crop(Uint8List bytes, Rect fraction) => compute(_crop, (
+    bytes,
+    fraction.left,
+    fraction.top,
+    fraction.width,
+    fraction.height,
+  ));
+
+  /// Rotates clockwise by [degrees] (90, 180 or 270).
+  Future<Uint8List> rotate(Uint8List bytes, int degrees) =>
+      compute(_rotate, (bytes, degrees));
+}
+
+Uint8List _crop((Uint8List, double, double, double, double) a) {
+  final image = img.decodeImage(a.$1);
+  if (image == null) throw const FormatException('Unsupported image format');
+  final x = (a.$2 * image.width).round().clamp(0, image.width - 1);
+  final y = (a.$3 * image.height).round().clamp(0, image.height - 1);
+  final w = (a.$4 * image.width).round().clamp(1, image.width - x);
+  final h = (a.$5 * image.height).round().clamp(1, image.height - y);
+  return Uint8List.fromList(
+    img.encodePng(img.copyCrop(image, x: x, y: y, width: w, height: h)),
+  );
+}
+
+Uint8List _rotate((Uint8List, int) args) {
+  final image = img.decodeImage(args.$1);
+  if (image == null) throw const FormatException('Unsupported image format');
+  return Uint8List.fromList(
+    img.encodePng(img.copyRotate(image, angle: args.$2)),
+  );
 }
 
 const _maxSide = 2000;

@@ -72,10 +72,10 @@ void main() {
     await t.pumpAndSettle();
     expect(find.textContaining('₹7,000.00 per gram'), findsOneWidget);
     await enter(t, 'goldWeight', '10');
-    await enter(t, 'diamondWeight', '0.5');
-    await enter(t, 'stoneWeight', '0.2');
-    await enter(t, 'diamondRate', '30000');
-    await enter(t, 'stoneRate', '5000');
+    await enter(t, 'stone.0.weight', '0.5');
+    await enter(t, 'stone.0.rate', '30000');
+    await enter(t, 'stone.1.weight', '0.2');
+    await enter(t, 'stone.1.rate', '5000');
     final pct = find.descendant(
       of: find.byKey(const Key('makingMethod')),
       matching: find.text('% of gold value'),

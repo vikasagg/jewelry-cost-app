@@ -57,6 +57,7 @@ class PricingResult {
     required this.goldValuePaise,
     required this.diamondValuePaise,
     required this.stoneValuePaise,
+    this.stoneLinePaise = const [],
     required this.wastagePaise,
     required this.makingPaise,
     required this.subtotalPaise,
@@ -72,6 +73,9 @@ class PricingResult {
   final int goldValuePaise;
   final int diamondValuePaise;
   final int stoneValuePaise;
+
+  /// Value of each entry in [JewelleryInput.stones], in the same order.
+  final List<int> stoneLinePaise;
   final int wastagePaise;
   final int makingPaise;
   final int subtotalPaise;
@@ -97,6 +101,7 @@ class PricingResult {
     'goldValuePaise': goldValuePaise,
     'diamondValuePaise': diamondValuePaise,
     'stoneValuePaise': stoneValuePaise,
+    'stoneLinePaise': stoneLinePaise,
     'wastagePaise': wastagePaise,
     'makingPaise': makingPaise,
     'subtotalPaise': subtotalPaise,
@@ -113,6 +118,7 @@ class PricingResult {
     goldValuePaise: j['goldValuePaise'] as int,
     diamondValuePaise: j['diamondValuePaise'] as int,
     stoneValuePaise: j['stoneValuePaise'] as int,
+    stoneLinePaise: ((j['stoneLinePaise'] as List?) ?? const []).cast<int>(),
     wastagePaise: j['wastagePaise'] as int,
     makingPaise: j['makingPaise'] as int,
     subtotalPaise: j['subtotalPaise'] as int,
@@ -144,8 +150,8 @@ class PricingOutcome {
 ///
 /// Formulas:
 ///  * Gold value     = gold weight (g) × gold rate/g for the selected purity
-///  * Diamond value  = diamond weight (ct) × diamond rate/ct
-///  * Stone value    = stone weight (ct) × stone rate/ct
+///  * Diamond value  = Σ diamond lines (weight ct × rate/ct)
+///  * Stone value    = Σ other-stone lines (weight ct × rate/ct)
 ///  * Wastage        = gold value × % / 100   OR   wastage g × gold rate/g
 ///  * Making         = fixed ₹                OR   gold value × % / 100
 ///  * Subtotal       = sum of the above
@@ -177,28 +183,35 @@ class PricingEngine {
       '${formatInr(rate)}/g (${purity.label})',
     );
 
+    // Each stone line is priced and rounded on its own, then summed.
+    final linePaise = <int>[];
     var diamond = 0;
-    final dw = input.diamondWeight ?? 0;
-    if (input.excludeDiamond) {
-      if (dw > 0) notes.add('Diamond value excluded by user');
-    } else if (dw > 0) {
-      diamond = toPaise(dw * input.diamondRate!);
+    var stone = 0;
+    for (final line in input.stones) {
+      final excluded = line.kind == StoneKind.diamond
+          ? input.excludeDiamond
+          : input.excludeStone;
+      if (excluded || !line.hasWeight) {
+        linePaise.add(0);
+        continue;
+      }
+      final v = toPaise(line.weightCt! * line.ratePerCt!);
+      linePaise.add(v);
+      if (line.kind == StoneKind.diamond) {
+        diamond += v;
+      } else {
+        stone += v;
+      }
       notes.add(
-        'Diamond: ${dw.toStringAsFixed(2)} ct × '
-        '${formatInr(input.diamondRate!)}/ct',
+        '${line.displayName}: ${line.weightCt!.toStringAsFixed(2)} ct × '
+        '${formatInr(line.ratePerCt!)}/ct',
       );
     }
-
-    var stone = 0;
-    final sw = input.stoneWeight ?? 0;
-    if (input.excludeStone) {
-      if (sw > 0) notes.add('Other stone value excluded by user');
-    } else if (sw > 0) {
-      stone = toPaise(sw * input.stoneRate!);
-      notes.add(
-        'Other stone: ${sw.toStringAsFixed(2)} ct × '
-        '${formatInr(input.stoneRate!)}/ct',
-      );
+    if (input.excludeDiamond && input.diamondWeight > 0) {
+      notes.add('Diamond value excluded by user');
+    }
+    if (input.excludeStone && input.stoneWeight > 0) {
+      notes.add('Other stone value excluded by user');
     }
 
     var wastage = 0;
@@ -285,6 +298,7 @@ class PricingEngine {
         goldValuePaise: gold,
         diamondValuePaise: diamond,
         stoneValuePaise: stone,
+        stoneLinePaise: linePaise,
         wastagePaise: wastage,
         makingPaise: making,
         subtotalPaise: subtotal,
@@ -334,30 +348,24 @@ class PricingEngine {
     }
     nonNegative('grossWeight', input.grossWeight, 'Gross weight');
 
-    nonNegative('diamondWeight', input.diamondWeight, 'Diamond weight');
-    nonNegative('diamondRate', input.diamondRate, 'Diamond rate');
-    if ((input.diamondWeight ?? 0) > 0 &&
-        !input.excludeDiamond &&
-        input.diamondRate == null) {
-      issues.add(
-        const PricingIssue(
-          'diamondRate',
-          'Diamond weight is present: enter a diamond rate per carat or exclude diamond value',
-        ),
-      );
-    }
-
-    nonNegative('stoneWeight', input.stoneWeight, 'Stone weight');
-    nonNegative('stoneRate', input.stoneRate, 'Stone rate');
-    if ((input.stoneWeight ?? 0) > 0 &&
-        !input.excludeStone &&
-        input.stoneRate == null) {
-      issues.add(
-        const PricingIssue(
-          'stoneRate',
-          'Stone weight is present: enter a stone rate per carat (0 allowed) or exclude stone value',
-        ),
-      );
+    for (var i = 0; i < input.stones.length; i++) {
+      final line = input.stones[i];
+      final name = line.displayName;
+      nonNegative('stone.$i.weight', line.weightCt, '$name weight');
+      nonNegative('stone.$i.rate', line.ratePerCt, '$name rate');
+      final excluded = line.kind == StoneKind.diamond
+          ? input.excludeDiamond
+          : input.excludeStone;
+      if (line.hasWeight && !excluded && line.ratePerCt == null) {
+        issues.add(
+          PricingIssue(
+            'stone.$i.rate',
+            line.kind == StoneKind.diamond
+                ? '$name weight is present: enter a rate per carat or exclude diamond value'
+                : '$name weight is present: enter a rate per carat (0 allowed) or exclude stone value',
+          ),
+        );
+      }
     }
 
     if (input.makingValue == null) {

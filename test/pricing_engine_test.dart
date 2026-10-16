@@ -1,7 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewellery_cost/models/jewellery_input.dart';
 import 'package:jewellery_cost/models/purity.dart';
+
 import 'package:jewellery_cost/pricing/pricing_engine.dart';
+
+StoneLine dia(double? w, double? r) =>
+    StoneLine(kind: StoneKind.diamond, label: 'DIA', weightCt: w, ratePerCt: r);
+StoneLine stn(double? w, double? r) =>
+    StoneLine(kind: StoneKind.stone, label: 'Stone', weightCt: w, ratePerCt: r);
 
 const rates = {
   Purity.k14: 4100.0,
@@ -60,15 +66,13 @@ void main() {
         JewelleryInput(
           purity: Purity.k18,
           goldWeight: 10,
-          diamondWeight: 0.5,
-          diamondRate: 30000,
-          stoneWeight: 0.2,
-          stoneRate: 5000,
+
           makingMethod: MakingMethod.percentOfGold,
           makingValue: 10,
           wastageMethod: WastageMethod.percent,
           wastagePercent: 5,
           gst: allTaxable3,
+          stones: [dia(0.5, 30000), stn(0.2, 5000)],
         ),
         {...rates, Purity.k18: 7000},
       );
@@ -112,22 +116,16 @@ void main() {
 
     test('negative weights and rates are rejected', () {
       final o = engine.calculate(
-        base().copyWith(
-          diamondWeight: -0.1,
-          diamondRate: -5,
-          stoneWeight: -1,
-          stoneRate: -2,
-          grossWeight: -3,
-        ),
+        base().copyWith(grossWeight: -3, stones: [dia(-0.1, -5), stn(-1, -2)]),
         rates,
       );
       expect(
         o.issues.map((i) => i.field).toSet(),
         containsAll([
-          'diamondWeight',
-          'diamondRate',
-          'stoneWeight',
-          'stoneRate',
+          'stone.0.weight',
+          'stone.0.rate',
+          'stone.1.weight',
+          'stone.1.rate',
           'grossWeight',
         ]),
       );
@@ -170,22 +168,27 @@ void main() {
 
   group('diamond and stone (carats)', () {
     test('diamond value = ct × rate/ct', () {
-      final r = ok(base().copyWith(diamondWeight: 0.37, diamondRate: 65000));
+      final r = ok(base().copyWith(stones: [dia(0.37, 65000)]));
       expect(r.diamondValuePaise, 2405000);
     });
 
     test('stone value = ct × rate/ct', () {
-      final r = ok(base().copyWith(stoneWeight: 1.25, stoneRate: 1200));
+      final r = ok(base().copyWith(stones: [stn(1.25, 1200)]));
       expect(r.stoneValuePaise, 150000);
     });
 
     test('missing diamond rate blocks the calculation', () {
-      final o = engine.calculate(base().copyWith(diamondWeight: 0.5), rates);
-      expect(o.issues.single.field, 'diamondRate');
+      final o = engine.calculate(
+        base().copyWith(stones: [dia(0.5, null)]),
+        rates,
+      );
+      expect(o.issues.single.field, 'stone.0.rate');
     });
 
     test('diamond can be explicitly excluded instead', () {
-      final r = ok(base().copyWith(diamondWeight: 0.5, excludeDiamond: true));
+      final r = ok(
+        base().copyWith(excludeDiamond: true, stones: [dia(0.5, null)]),
+      );
       expect(r.diamondValuePaise, 0);
       expect(r.notes.join(), contains('excluded'));
     });
@@ -193,23 +196,25 @@ void main() {
     test('missing stone rate blocks; zero stone rate is allowed', () {
       expect(
         engine
-            .calculate(base().copyWith(stoneWeight: 0.2), rates)
+            .calculate(base().copyWith(stones: [stn(0.2, null)]), rates)
             .issues
             .single
             .field,
-        'stoneRate',
+        'stone.0.rate',
       );
-      final r = ok(base().copyWith(stoneWeight: 0.2, stoneRate: 0));
+      final r = ok(base().copyWith(stones: [stn(0.2, 0)]));
       expect(r.stoneValuePaise, 0);
     });
 
     test('stone can be excluded', () {
-      final r = ok(base().copyWith(stoneWeight: 0.2, excludeStone: true));
+      final r = ok(
+        base().copyWith(excludeStone: true, stones: [stn(0.2, null)]),
+      );
       expect(r.stoneValuePaise, 0);
     });
 
     test('rate without weight contributes nothing', () {
-      final r = ok(base().copyWith(diamondRate: 50000));
+      final r = ok(base().copyWith(stones: [dia(null, 50000)]));
       expect(r.diamondValuePaise, 0);
     });
   });
@@ -289,12 +294,12 @@ void main() {
     final input = JewelleryInput(
       purity: Purity.k22,
       goldWeight: 10,
-      diamondWeight: 0.1,
-      diamondRate: 50000,
+
       makingValue: 5000,
       wastageMethod: WastageMethod.weight,
       wastageWeight: 0.2,
       gst: allTaxable3,
+      stones: [dia(0.1, 50000)],
     );
     // gold 64,500; diamond 5,000; wastage 1,290; making 5,000 => 75,790
 
@@ -353,20 +358,84 @@ void main() {
     });
   });
 
+  group('multiple stone lines (e.g. DIA\\0.38\\700 tags)', () {
+    test('each line priced at its own rate and summed by kind', () {
+      final r = ok(
+        base().copyWith(
+          stones: const [
+            StoneLine(
+              kind: StoneKind.diamond,
+              label: 'DIA',
+              weightCt: 0.38,
+              ratePerCt: 70000,
+              code: '700',
+            ),
+            StoneLine(
+              kind: StoneKind.diamond,
+              label: 'DIA',
+              weightCt: 0.11,
+              ratePerCt: 75000,
+              code: '750',
+            ),
+            StoneLine(
+              kind: StoneKind.stone,
+              label: 'FANCY CUT',
+              weightCt: 2.13,
+              ratePerCt: 8500,
+              code: '850',
+            ),
+          ],
+        ),
+      );
+      expect(r.stoneLinePaise, [2660000, 825000, 1810500]);
+      expect(r.diamondValuePaise, 2660000 + 825000);
+      expect(r.stoneValuePaise, 1810500);
+    });
+
+    test('a line missing its rate is reported against that line', () {
+      final o = engine.calculate(
+        base().copyWith(stones: [dia(0.38, 70000), dia(0.11, null)]),
+        rates,
+      );
+      expect(o.issues.single.field, 'stone.1.rate');
+    });
+
+    test('excluding diamonds excludes every diamond line only', () {
+      final r = ok(
+        base().copyWith(
+          excludeDiamond: true,
+          stones: [dia(0.38, null), dia(0.11, 75000), stn(1, 1000)],
+        ),
+      );
+      expect(r.diamondValuePaise, 0);
+      expect(r.stoneValuePaise, 100000);
+    });
+
+    test('tag code is never used as a rate', () {
+      final o = engine.calculate(
+        base().copyWith(
+          stones: const [
+            StoneLine(kind: StoneKind.diamond, weightCt: 0.38, code: '700'),
+          ],
+        ),
+        rates,
+      );
+      expect(o.issues.single.field, 'stone.0.rate');
+    });
+  });
+
   test('line items always sum to totals', () {
     final r = ok(
       JewelleryInput(
         purity: Purity.k14,
         goldWeight: 2.333,
-        diamondWeight: 0.077,
-        diamondRate: 41111,
-        stoneWeight: 0.033,
-        stoneRate: 999.99,
+
         makingMethod: MakingMethod.percentOfGold,
         makingValue: 13.33,
         wastageMethod: WastageMethod.percent,
         wastagePercent: 7.77,
         gst: const GstConfig(ratePercent: 3),
+        stones: [dia(0.077, 41111), stn(0.033, 999.99)],
       ),
     );
     expect(
@@ -381,9 +450,7 @@ void main() {
   });
 
   test('result survives JSON round-trip', () {
-    final r = ok(
-      base(makingValue: 100).copyWith(diamondWeight: 0.1, diamondRate: 1000),
-    );
+    final r = ok(base(makingValue: 100).copyWith(stones: [dia(0.1, 1000)]));
     final back = PricingResult.fromJson(r.toJson());
     expect(back.totalPaise, r.totalPaise);
     expect(back.gstLines.single.basePaise, r.gstLines.single.basePaise);

@@ -187,6 +187,30 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
+  /// One line per stone group, e.g. "DIA 0.38 ct × ₹70,000.00 = ₹26,600.00".
+  String? _stonesCaption(JewelleryInput i, PricingResult r, StoneKind kind) {
+    final excluded = kind == StoneKind.diamond
+        ? i.excludeDiamond
+        : i.excludeStone;
+    final lines = <String>[];
+    for (var k = 0; k < i.stones.length; k++) {
+      final s = i.stones[k];
+      if (s.kind != kind || !s.hasWeight) continue;
+      final w = '${s.displayName} ${s.weightCt!.toStringAsFixed(2)} ct';
+      if (excluded || s.ratePerCt == null) {
+        lines.add(w);
+      } else {
+        final v = k < r.stoneLinePaise.length ? r.stoneLinePaise[k] : null;
+        lines.add(
+          '$w × ${formatInr(s.ratePerCt!)}'
+          '${v == null ? '' : ' = ${formatPaise(v)}'}',
+        );
+      }
+    }
+    if (lines.isEmpty) return null;
+    return [if (excluded) 'Excluded', ...lines].join('\n');
+  }
+
   Widget _issuesView() => ListView(
     padding: const EdgeInsets.all(16),
     children: [
@@ -275,11 +299,11 @@ class _ResultScreenState extends State<ResultScreen> {
                     ),
                     StatTile(
                       label: 'Diamond Weight',
-                      value: '${(i.diamondWeight ?? 0).toStringAsFixed(2)} ct',
+                      value: '${i.diamondWeight.toStringAsFixed(2)} ct',
                     ),
                     StatTile(
                       label: 'Other Stone',
-                      value: '${(i.stoneWeight ?? 0).toStringAsFixed(2)} ct',
+                      value: '${i.stoneWeight.toStringAsFixed(2)} ct',
                     ),
                     if (i.grossWeight != null)
                       StatTile(
@@ -307,20 +331,12 @@ class _ResultScreenState extends State<ResultScreen> {
                 BreakdownRow(
                   label: 'Diamond value',
                   value: formatPaise(r.diamondValuePaise),
-                  caption: i.excludeDiamond
-                      ? 'Excluded'
-                      : (i.diamondWeight ?? 0) > 0
-                      ? '${i.diamondWeight!.toStringAsFixed(2)} ct × ${formatInr(i.diamondRate!)}'
-                      : null,
+                  caption: _stonesCaption(i, r, StoneKind.diamond),
                 ),
                 BreakdownRow(
                   label: 'Other stone value',
                   value: formatPaise(r.stoneValuePaise),
-                  caption: i.excludeStone
-                      ? 'Excluded'
-                      : (i.stoneWeight ?? 0) > 0
-                      ? '${i.stoneWeight!.toStringAsFixed(2)} ct × ${formatInr(i.stoneRate!)}'
-                      : null,
+                  caption: _stonesCaption(i, r, StoneKind.stone),
                 ),
                 BreakdownRow(
                   label: 'Wastage charges',

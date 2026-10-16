@@ -44,10 +44,6 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
       'tagNumber',
       'goldWeight',
       'grossWeight',
-      'diamondWeight',
-      'diamondRate',
-      'stoneWeight',
-      'stoneRate',
       'makingValue',
       'wastagePercent',
       'wastageWeight',
@@ -60,6 +56,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   Purity? _purity;
   MakingMethod _making = MakingMethod.fixed;
   WastageMethod _wastage = WastageMethod.none;
+  final _stones = <_StoneRow>[];
   bool _excludeDiamond = false;
   bool _excludeStone = false;
   Set<PriceComponent> _taxable = PriceComponent.values.toSet();
@@ -85,7 +82,9 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
 
     final defaults = state.pricingDefaults;
     final input =
-        widget.initial ?? widget.parsed?.toInput(defaults) ?? defaults;
+        widget.initial ??
+        widget.parsed?.toInput(defaults, rateFor: state.stoneRateFor) ??
+        defaults;
     _load(input);
     final parsed = widget.parsed;
     if (parsed != null) {
@@ -99,10 +98,12 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     _c['tagNumber']!.text = i.tagNumber ?? '';
     _c['goldWeight']!.text = formatInput(i.goldWeight);
     _c['grossWeight']!.text = formatInput(i.grossWeight);
-    _c['diamondWeight']!.text = formatInput(i.diamondWeight);
-    _c['diamondRate']!.text = formatInput(i.diamondRate);
-    _c['stoneWeight']!.text = formatInput(i.stoneWeight);
-    _c['stoneRate']!.text = formatInput(i.stoneRate);
+    for (final r in _stones) {
+      r.dispose();
+    }
+    _stones
+      ..clear()
+      ..addAll(i.stones.map(_StoneRow.from));
     _c['makingValue']!.text = formatInput(i.makingValue);
     _c['wastagePercent']!.text = formatInput(i.wastagePercent);
     _c['wastageWeight']!.text = formatInput(i.wastageWeight);
@@ -121,6 +122,9 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   void dispose() {
     for (final c in _c.values) {
       c.dispose();
+    }
+    for (final r in _stones) {
+      r.dispose();
     }
     super.dispose();
   }
@@ -141,11 +145,8 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     purity: _purity,
     goldWeight: _num('goldWeight'),
     grossWeight: _num('grossWeight'),
-    diamondWeight: _num('diamondWeight'),
-    diamondRate: _num('diamondRate'),
+    stones: [for (final r in _stones) r.toLine()],
     excludeDiamond: _excludeDiamond,
-    stoneWeight: _num('stoneWeight'),
-    stoneRate: _num('stoneRate'),
     excludeStone: _excludeStone,
     makingMethod: _making,
     makingValue: _num('makingValue'),
@@ -183,12 +184,61 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     'purity': 'Gold purity',
     'goldWeight': 'Gold weight',
     'grossWeight': 'Gross weight',
-    'diamondWeight': 'Diamond weight',
-    'stoneWeight': 'Stone weight',
     'makingValue': 'Making charges',
     'wastagePercent': 'Wastage %',
     'wastageWeight': 'Wastage weight',
   };
+
+  String _labelOf(String key) {
+    final m = RegExp(r'^stone\.(\d+)\.(weight|rate|kind)$').firstMatch(key);
+    if (m != null) {
+      final i = int.parse(m.group(1)!);
+      final name = i < _stones.length ? _stones[i].displayName : 'Stone';
+      return '$name ${m.group(2) == 'kind' ? 'type' : m.group(2)}';
+    }
+    return _labels[key] ?? key;
+  }
+
+  void _addStone(StoneKind kind) {
+    final state = AppScope.read(context);
+    setState(() {
+      _stones.add(
+        _StoneRow.from(
+          StoneLine(kind: kind, ratePerCt: state.stoneRateFor(kind, null)),
+        ),
+      );
+    });
+  }
+
+  /// Removes a stone line and shifts the index-based field keys after it.
+  void _removeStone(int index) {
+    Map<String, V> shift<V>(Map<String, V> m) {
+      final out = <String, V>{};
+      m.forEach((k, v) {
+        final mm = RegExp(r'^stone\.(\d+)\.(.+)$').firstMatch(k);
+        if (mm == null) {
+          out[k] = v;
+          return;
+        }
+        final i = int.parse(mm.group(1)!);
+        if (i == index) return;
+        out['stone.${i > index ? i - 1 : i}.${mm.group(2)}'] = v;
+      });
+      return out;
+    }
+
+    setState(() {
+      _stones.removeAt(index).dispose();
+      final u = shift(_uncertain);
+      _uncertain
+        ..clear()
+        ..addAll(u);
+      final e = shift(_errors);
+      _errors
+        ..clear()
+        ..addAll(e);
+    });
+  }
 
   Future<void> _calculate() async {
     FocusScope.of(context).unfocus();
@@ -200,7 +250,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
           content: Text(
             'These values were unclear on the tag. Check each one against the '
             'tag, correct it if needed, then tap Confirm:\n\n'
-            '${_uncertain.keys.map((k) => '• ${_labels[k] ?? k}').join('\n')}',
+            '${_uncertain.keys.map((k) => '• ${_labelOf(k)}').join('\n')}',
           ),
           actions: [
             TextButton(
@@ -220,6 +270,14 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
         errors[k] = 'Enter a valid number';
       }
     });
+    for (var i = 0; i < _stones.length; i++) {
+      if (parseNumber(_stones[i].weight.text)?.isNaN ?? false) {
+        errors['stone.$i.weight'] = 'Enter a valid number';
+      }
+      if (parseNumber(_stones[i].rate.text)?.isNaN ?? false) {
+        errors['stone.$i.rate'] = 'Enter a valid number';
+      }
+    }
     final snapshot = _snapshot;
     if (snapshot == null) {
       errors['purity'] = 'Save gold rates first';
@@ -418,60 +476,58 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 hint: 'For reference only — not used in pricing',
               ),
               const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _num2('diamondWeight', 'Diamond weight', 'ct'),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _num2('stoneWeight', 'Other stone weight', 'ct'),
-                  ),
-                ],
-              ),
               const SizedBox(height: 6),
               const Text(
-                'Gold weight is used as entered. Stone weight is never subtracted '
-                'automatically.',
+                'Gold weight is used as entered. Stone weight is never '
+                'subtracted automatically.',
                 style: TextStyle(fontSize: 12, color: AppColors.muted),
               ),
 
-              // ------------------------------------------------ pricing inputs
+              // ------------------------------------------- diamonds & stones
               const SizedBox(height: 24),
-              const SectionTitle('Pricing inputs'),
-              _num2(
-                'diamondRate',
-                'Diamond rate',
-                '/ ct',
-                prefix: '₹ ',
-                enabled: !_excludeDiamond,
+              const SectionTitle('Diamonds & stones'),
+              for (var i = 0; i < _stones.length; i++) ...[
+                _stoneCard(i),
+                const SizedBox(height: 10),
+              ],
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    key: const Key('addDiamond'),
+                    onPressed: () => _addStone(StoneKind.diamond),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Diamond line'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _addStone(StoneKind.stone),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Other stone line'),
+                  ),
+                ],
               ),
+              _weightBalance(),
               _excludeSwitch(
                 'Exclude diamond value',
                 _excludeDiamond,
                 (v) => setState(() {
                   _excludeDiamond = v;
-                  _errors.remove('diamondRate');
+                  _errors.removeWhere((k, _) => k.endsWith('.rate'));
                 }),
-              ),
-              _num2(
-                'stoneRate',
-                'Other stone rate',
-                '/ ct',
-                prefix: '₹ ',
-                enabled: !_excludeStone,
-                hint: '0 allowed',
               ),
               _excludeSwitch(
                 'Exclude other stone value',
                 _excludeStone,
                 (v) => setState(() {
                   _excludeStone = v;
-                  _errors.remove('stoneRate');
+                  _errors.removeWhere((k, _) => k.endsWith('.rate'));
                 }),
               ),
-              const SizedBox(height: 8),
+
+              // ------------------------------------------------ pricing inputs
+              const SizedBox(height: 24),
+              const SectionTitle('Pricing inputs'),
               const Text(
                 'Making charges',
                 style: TextStyle(color: AppColors.muted),
@@ -602,6 +658,160 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     ),
   );
 
+  Widget _stoneCard(int i) {
+    final row = _stones[i];
+    final kindKey = 'stone.$i.kind';
+    final excluded = row.kind == StoneKind.diamond
+        ? _excludeDiamond
+        : _excludeStone;
+    return Card(
+      key: ValueKey(row),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    [
+                      row.label ?? 'Line ${i + 1}',
+                      if (row.code != null) 'tag code ${row.code}',
+                    ].join(' · '),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove line',
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => _removeStone(i),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SegmentedButton<StoneKind>(
+                key: Key(kindKey),
+                showSelectedIcon: false,
+                segments: [
+                  for (final k in StoneKind.values)
+                    ButtonSegment(value: k, label: Text(k.label)),
+                ],
+                selected: {row.kind},
+                onSelectionChanged: (sel) {
+                  row.kind = sel.first;
+                  _edited(kindKey);
+                },
+              ),
+            ),
+            if (_stateOf(kindKey) != FieldState.normal)
+              FlagNote(
+                state: _stateOf(kindKey),
+                note: _uncertain[kindKey],
+                onConfirm: () => _confirm(kindKey),
+              ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _stoneField(i, 'weight', row.weight, 'Weight', 'ct'),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _stoneField(
+                      i,
+                      'rate',
+                      row.rate,
+                      'Rate',
+                      '/ ct',
+                      prefix: '₹ ',
+                      enabled: !excluded,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stoneField(
+    int i,
+    String part,
+    TextEditingController controller,
+    String label,
+    String unit, {
+    String? prefix,
+    bool enabled = true,
+  }) {
+    final key = 'stone.$i.$part';
+    return NumberField(
+      fieldKey: Key(key),
+      controller: controller,
+      label: label,
+      unit: unit,
+      prefix: prefix,
+      enabled: enabled,
+      errorText: _errors[key],
+      state: _stateOf(key),
+      note: _uncertain[key],
+      onConfirm: () => _confirm(key),
+      onChanged: (_) => _edited(key),
+    );
+  }
+
+  /// Live check: gross − gold weight should equal stone carats × 0.2 g.
+  Widget _weightBalance() {
+    final gross = parseNumber(_c['grossWeight']!.text);
+    final net = parseNumber(_c['goldWeight']!.text);
+    final ct = _stones.fold<double>(
+      0,
+      (a, r) => a + (parseNumber(r.weight.text) ?? 0),
+    );
+    if (gross == null || net == null || gross.isNaN || net.isNaN || ct <= 0) {
+      return const SizedBox(height: 8);
+    }
+    final b = WeightBalance(grossG: gross, netG: net, stonesCt: ct);
+    final ok = b.balances;
+    return Container(
+      key: const Key('weightBalance'),
+      margin: const EdgeInsets.only(top: 12, bottom: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: ok ? AppColors.okSoft : AppColors.warnSoft,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            ok ? Icons.check_circle : Icons.info_outline,
+            color: ok ? AppColors.ok : AppColors.warn,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              ok
+                  ? 'Weights balance: gross ${gross.toStringAsFixed(3)} g − gold '
+                        '${net.toStringAsFixed(3)} g = ${b.differenceG.toStringAsFixed(3)} g '
+                        '= ${ct.toStringAsFixed(2)} ct of stones'
+                  : 'Weights do not balance: gross − gold = '
+                        '${b.differenceG.toStringAsFixed(3)} g, but stones '
+                        '${ct.toStringAsFixed(2)} ct = ${b.stonesG.toStringAsFixed(3)} g. '
+                        'Check the weights (other materials can also explain a gap).',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _excludeSwitch(
     String label,
     bool value,
@@ -665,4 +875,35 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     onConfirm: () => _confirm(key),
     onChanged: (_) => _edited(key),
   );
+}
+
+/// Editable state for one diamond/stone line.
+class _StoneRow {
+  _StoneRow({required this.kind, this.label, this.code});
+
+  factory _StoneRow.from(StoneLine l) =>
+      _StoneRow(kind: l.kind, label: l.label, code: l.code)
+        ..weight.text = formatInput(l.weightCt)
+        ..rate.text = formatInput(l.ratePerCt);
+
+  StoneKind kind;
+  final String? label;
+  final String? code;
+  final weight = TextEditingController();
+  final rate = TextEditingController();
+
+  String get displayName => label ?? kind.label;
+
+  StoneLine toLine() => StoneLine(
+    kind: kind,
+    label: label,
+    code: code,
+    weightCt: parseNumber(weight.text),
+    ratePerCt: parseNumber(rate.text),
+  );
+
+  void dispose() {
+    weight.dispose();
+    rate.dispose();
+  }
 }

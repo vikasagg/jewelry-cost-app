@@ -5,6 +5,11 @@ import 'package:jewellery_cost/models/gold_rates.dart';
 import 'package:jewellery_cost/models/jewellery_input.dart';
 import 'package:jewellery_cost/models/purity.dart';
 
+StoneLine dia(double? w, double? r) =>
+    StoneLine(kind: StoneKind.diamond, label: 'DIA', weightCt: w, ratePerCt: r);
+StoneLine stn(double? w, double? r) =>
+    StoneLine(kind: StoneKind.stone, label: 'Stone', weightCt: w, ratePerCt: r);
+
 void main() {
   final day1 = DateTime(2026, 10, 1, 10, 30);
   final day2 = DateTime(2026, 10, 2, 11, 0);
@@ -19,15 +24,15 @@ void main() {
     updatedAt: t,
   );
 
-  const input = JewelleryInput(
+  final input = JewelleryInput(
     tagNumber: 'DR-18-0425',
     itemName: 'Diamond Ring',
     purity: Purity.k18,
     goldWeight: 10,
-    diamondWeight: 0.5,
-    diamondRate: 30000,
+
     makingValue: 7000,
-    gst: GstConfig(ratePercent: 3),
+    gst: const GstConfig(ratePercent: 3),
+    stones: [dia(0.5, 30000)],
   );
 
   test('gold rates persist between sessions', () async {
@@ -122,6 +127,56 @@ void main() {
     expect(state.history.all().length, 1);
   });
 
+  test('stone rates are remembered per tag code, never across codes', () async {
+    final state = AppState(MemoryStore());
+    await state.saveRates(ratesAt(5300, day1));
+    final coded = input.copyWith(
+      stones: [
+        const StoneLine(
+          kind: StoneKind.diamond,
+          label: 'DIA',
+          weightCt: 0.38,
+          ratePerCt: 70000,
+          code: '700',
+        ),
+        const StoneLine(
+          kind: StoneKind.diamond,
+          label: 'DIA',
+          weightCt: 0.11,
+          ratePerCt: 75000,
+          code: '750',
+        ),
+      ],
+    );
+    final r = state.engine.calculate(coded, state.rates!.perGram).result!;
+    await state.saveCalculation(
+      input: coded,
+      ratesSnapshot: state.rates!,
+      result: r,
+    );
+    expect(state.stoneRateFor(StoneKind.diamond, '700'), 70000);
+    expect(state.stoneRateFor(StoneKind.diamond, '750'), 75000);
+    expect(state.stoneRateFor(StoneKind.diamond, '850'), isNull);
+    expect(state.stoneRateFor(StoneKind.stone, '700'), isNull);
+    expect(state.stoneRateFor(StoneKind.diamond, null), 75000);
+  });
+
+  test('records saved before multi-line stones still load', () {
+    final old = JewelleryInput.fromJson({
+      'purity': 'k18',
+      'goldWeight': 10.0,
+      'diamondWeight': 0.5,
+      'diamondRate': 30000.0,
+      'stoneWeight': 0.2,
+      'stoneRate': 5000.0,
+      'makingValue': 0.0,
+    });
+    expect(old.stones, hasLength(2));
+    expect(old.diamondWeight, 0.5);
+    expect(old.stones.last.kind, StoneKind.stone);
+    expect(old.stones.last.ratePerCt, 5000);
+  });
+
   test('pricing defaults remember rates and GST but not item data', () async {
     final state = AppState(MemoryStore());
     await state.saveRates(ratesAt(5300, day1));
@@ -132,7 +187,9 @@ void main() {
       result: r,
     );
     final d = state.pricingDefaults;
-    expect(d.diamondRate, 30000);
+    expect(d.stones.first.kind, StoneKind.diamond);
+    expect(d.stones.first.ratePerCt, 30000);
+    expect(d.stones.first.weightCt, isNull);
     expect(d.gst.ratePercent, 3);
     expect(d.goldWeight, isNull);
     expect(d.tagNumber, isNull);

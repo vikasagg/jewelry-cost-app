@@ -44,8 +44,8 @@ class ParsedTag {
     this.purity = const ParsedField.missing(),
     this.goldWeight = const ParsedField.missing(),
     this.grossWeight = const ParsedField.missing(),
-    this.diamondWeight = const ParsedField.missing(),
-    this.stoneWeight = const ParsedField.missing(),
+    this.stones = const [],
+    this.weightBalance,
     this.makingMethod = const ParsedField.missing(),
     this.makingValue = const ParsedField.missing(),
     this.wastageMethod = const ParsedField.missing(),
@@ -58,8 +58,13 @@ class ParsedTag {
   final ParsedField<Purity> purity;
   final ParsedField<double> goldWeight;
   final ParsedField<double> grossWeight;
-  final ParsedField<double> diamondWeight;
-  final ParsedField<double> stoneWeight;
+
+  /// Diamond / stone groups in the order printed on the tag.
+  final List<ParsedStone> stones;
+
+  /// Gross − net weight check, when both weights and stones were read.
+  final WeightBalance? weightBalance;
+
   final ParsedField<MakingMethod> makingMethod;
   final ParsedField<double> makingValue;
   final ParsedField<WastageMethod> wastageMethod;
@@ -79,8 +84,10 @@ class ParsedTag {
     add('purity', purity, 'gold purity');
     add('goldWeight', goldWeight, 'gold weight');
     add('grossWeight', grossWeight, 'gross weight');
-    add('diamondWeight', diamondWeight, 'diamond weight');
-    add('stoneWeight', stoneWeight, 'stone weight');
+    for (var i = 0; i < stones.length; i++) {
+      add('stone.$i.weight', stones[i].weight, '${stones[i].label} weight');
+      add('stone.$i.kind', stones[i].kind, '${stones[i].label} type');
+    }
     add('makingValue', makingValue, 'making charges');
     add('makingValue', makingMethod, 'making charge type');
     final wKey = wastageMethod.value == WastageMethod.weight
@@ -91,6 +98,16 @@ class ParsedTag {
     return out;
   }
 
+  /// Gross − gold weight (g) that no stone line accounts for, when the tag
+  /// shows both weights but no stones were read — a sign stone lines were
+  /// missed by OCR.
+  double? get unreadStoneWeightG {
+    final g = grossWeight.value, n = goldWeight.value;
+    if (g == null || n == null || stones.isNotEmpty) return null;
+    final d = g - n;
+    return d > 0.01 ? d : null;
+  }
+
   /// Required fields that could not be read at all.
   List<String> get missingRequired => [
     if (!goldWeight.isFound) 'goldWeight',
@@ -98,17 +115,33 @@ class ParsedTag {
   ];
 
   /// Builds a form input, layering tag values over [defaults].
-  JewelleryInput toInput(JewelleryInput defaults) => JewelleryInput(
+  /// [rateFor] supplies a remembered ₹/ct rate for a stone line (by kind and
+  /// tag code); it is the user's own earlier input, never read from the tag.
+  JewelleryInput toInput(
+    JewelleryInput defaults, {
+    double? Function(StoneKind kind, String? code)? rateFor,
+  }) => JewelleryInput(
     itemName: itemName.value ?? defaults.itemName,
     tagNumber: tagNumber.value ?? defaults.tagNumber,
     purity: purity.value ?? defaults.purity,
     goldWeight: goldWeight.value ?? defaults.goldWeight,
     grossWeight: grossWeight.value ?? defaults.grossWeight,
-    diamondWeight: diamondWeight.value ?? defaults.diamondWeight,
-    diamondRate: defaults.diamondRate,
+    stones: stones.isEmpty
+        ? defaults.stones
+        : [
+            for (final st in stones)
+              StoneLine(
+                kind: st.kind.value ?? StoneKind.diamond,
+                label: st.label,
+                weightCt: st.weight.value,
+                code: st.code,
+                ratePerCt: rateFor?.call(
+                  st.kind.value ?? StoneKind.diamond,
+                  st.code,
+                ),
+              ),
+          ],
     excludeDiamond: defaults.excludeDiamond,
-    stoneWeight: stoneWeight.value ?? defaults.stoneWeight,
-    stoneRate: defaults.stoneRate,
     excludeStone: defaults.excludeStone,
     makingMethod: makingMethod.value ?? defaults.makingMethod,
     makingValue: makingValue.value ?? defaults.makingValue,
@@ -121,6 +154,66 @@ class ParsedTag {
         : defaults.wastageWeight,
     gst: defaults.gst,
   );
+}
+
+/// How much useful data a parse found; used to pick the best of several
+/// OCR attempts (e.g. different image rotations).
+int scoreParsedTag(ParsedTag t) {
+  var score = 0;
+  if (t.goldWeight.isFound) score += 3;
+  if (t.purity.isFound) score += 3;
+  if (t.grossWeight.isFound) score += 1;
+  if (t.tagNumber.isFound) score += 1;
+  if (t.makingValue.isFound) score += 1;
+  score += t.stones.length;
+  if (t.weightBalance?.balances ?? false) score += 2;
+  return score;
+}
+
+/// One diamond/stone group read from a tag.
+class ParsedStone {
+  const ParsedStone({
+    required this.label,
+    required this.weight,
+    required this.kind,
+    this.code,
+  });
+
+  /// Label as printed (normalised), e.g. "DIA", "FANCY CUT".
+  final String label;
+  final ParsedField<double> weight;
+  final ParsedField<StoneKind> kind;
+
+  /// Code printed after the weight (e.g. 700 in `DIA\\0.38\\700`).
+  final String? code;
+}
+
+/// Gross weight − net (gold) weight compared with total stone carats
+/// (1 ct = 0.2 g).
+class WeightBalance {
+  const WeightBalance({
+    required this.grossG,
+    required this.netG,
+    required this.stonesCt,
+  });
+
+  final double grossG;
+  final double netG;
+  final double stonesCt;
+
+  double get differenceG => grossG - netG;
+  double get stonesG => stonesCt * 0.2;
+
+  /// True when the stones account for the whole gross − net difference.
+  bool get balances => (differenceG - stonesG).abs() <= _tolerance(grossG);
+
+  static double _tolerance(double gross) =>
+      gross * 0.001 > 0.006 ? gross * 0.001 : 0.006;
+
+  String describe() =>
+      'G.Wt ${grossG.toStringAsFixed(3)} − N.Wt ${netG.toStringAsFixed(3)} = '
+      '${differenceG.toStringAsFixed(3)} g; stones '
+      '${stonesCt.toStringAsFixed(2)} ct = ${stonesG.toStringAsFixed(3)} g';
 }
 
 class _Num {
@@ -162,10 +255,14 @@ class TagParser {
       r'(?:GOLD\s*W(?:EIGH)?T\.?|GOLD\s+WEIGHT|G\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|G\.?\s?WT\.?|NET\s*W(?:EIGH)?T\.?|N\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?)';
   static const _grossLabel =
       r'(?:GROSS\s*W(?:EIGH)?T\.?|GR\.?\s*WT\.?|GRS\.?\s*WT\.?|GROSS)';
+  // Stone lines: LABEL [sep] weight [unit] [sep code], e.g. "DIA\0.38\700",
+  // "D.W.: 0.50 ct", "FANCY CUT\2.13\850". OCR often turns the backslash
+  // into "N", ")" or drops it entirely.
   static const _diamondLabel =
-      r'(?:DIAMOND\s*W(?:EIGH)?T\.?|DIAMOND|DIA\.?\s*W(?:EIGH)?T\.?|DIA\.?|D\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?)';
+      r'DIAMONDS?(?:\s*W(?:EIGH)?T\.?)?|DIA\.?\s*W(?:EIGH)?T\.?|DIA|D\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|SOLITAIRE';
+  static const _fancyLabel = r'[A-Z@]{0,3}ANCY\s*CUT';
   static const _stoneLabel =
-      r'(?:OTHER\s+STONES?\s*(?:W(?:EIGH)?T\.?)?|(?:COLOU?R(?:ED)?\s+)?STONES?\s*W(?:EIGH)?T\.?|STONES?|ST\.?\s*WT\.?|S\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|C\.?S\.?\s*WT\.?)';
+      r'OTHER\s+STONES?(?:\s*W(?:EIGH)?T\.?)?|(?:COLOU?R(?:ED)?\s+)?STONES?(?:\s*W(?:EIGH)?T\.?)?|ST\.?\s*WT\.?|S\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|C\.?S\.?\s*WT\.?|CZ|PEARLS?|RUBY|EMERALD|SAPPHIRE|POLKI|KUNDAN|GEMS?(?:TONES?)?';
   static const _makingLabel =
       r'(?:MAKING\s*CHARGES?|MAKING|LABOU?R\s*CHARGES?|LABOU?R|M\s?\.?\s?C\s?\.?)';
   static const _wastageLabel =
@@ -206,45 +303,68 @@ class TagParser {
     final gwHits = goldHitsAll
         .where((h) => !h.labelText.trim().startsWith('N'))
         .toList();
-    final diamondHits = _findWeights(visible(), _diamondLabel, consumed);
-    final stoneHits = _findWeights(visible(), _stoneLabel, consumed);
+    final bothGwNw = netHits.isNotEmpty && gwHits.isNotEmpty;
+    var goldWeight = _toWeightField(
+      [...grossGoldHits, if (!bothGwNw) ...gwHits, ...netHits],
+      'gold weight',
+      'g',
+      max: 1000,
+    );
+    var grossWeight = _toWeightField(
+      [...grossHits, if (bothGwNw) ...gwHits],
+      'gross weight',
+      'g',
+      max: 2000,
+    );
 
-    ParsedField<double> goldWeight;
-    ParsedField<double> grossWeight;
-    if (netHits.isNotEmpty && gwHits.isNotEmpty) {
-      // "GW" + "NW" on the same tag: GW is almost certainly *gross* weight.
-      final net = _toWeightField(netHits, 'gold weight', 'g', max: 1000);
+    var stones = _parseStones(visible(), consumed);
+
+    // Weight balance: gross − net should equal total stone carats × 0.2 g.
+    WeightBalance? balance;
+    final gross = grossWeight.value;
+    final net = goldWeight.value;
+    if (gross != null && net != null && stones.isNotEmpty) {
+      stones = _resolveMerged(stones, gross, net);
+      final ct = stones.fold<double>(0, (a, st) => a + (st.weight.value ?? 0));
+      balance = WeightBalance(grossG: gross, netG: net, stonesCt: ct);
+    }
+    final balanced = balance?.balances ?? false;
+
+    if (bothGwNw && !balanced) {
+      // "GW" + "NW" on the same tag: GW is almost certainly *gross* weight,
+      // but without a balancing stone total we ask the user to confirm.
       goldWeight = ParsedField(
-        net.value,
+        goldWeight.value,
         FieldConfidence.low,
         note: 'Tag shows both GW and NW. NW used as gold weight — confirm',
-        source: net.source,
+        source: goldWeight.source,
       );
-      final g = _toWeightField(gwHits, 'gross weight', 'g', max: 2000);
       grossWeight = ParsedField(
-        g.value,
+        grossWeight.value,
         FieldConfidence.low,
         note: 'GW treated as gross jewellery weight — confirm',
-        source: g.source,
+        source: grossWeight.source,
       );
-    } else {
-      final goldSources = [...grossGoldHits, ...gwHits, ...netHits];
-      goldWeight = _toWeightField(goldSources, 'gold weight', 'g', max: 1000);
-      grossWeight = _toWeightField(grossHits, 'gross weight', 'g', max: 2000);
     }
-
-    final diamondWeight = _toWeightField(
-      diamondHits,
-      'diamond weight',
-      'ct',
-      max: 50,
-    );
-    final stoneWeight = _toWeightField(
-      stoneHits,
-      'stone weight',
-      'ct',
-      max: 200,
-    );
+    if (balance != null && !balanced) {
+      final b = balance;
+      stones = [
+        for (final st in stones)
+          ParsedStone(
+            label: st.label,
+            kind: st.kind,
+            code: st.code,
+            weight: ParsedField(
+              st.weight.value,
+              FieldConfidence.low,
+              note:
+                  'Stone weights do not match gross − net weight '
+                  '(${b.describe()}) — confirm',
+              source: st.weight.source,
+            ),
+          ),
+      ];
+    }
 
     final making = _parseMaking(visible(), consumed);
     final wastage = _parseWastage(visible(), consumed);
@@ -257,8 +377,8 @@ class TagParser {
       purity: purity,
       goldWeight: goldWeight,
       grossWeight: grossWeight,
-      diamondWeight: diamondWeight,
-      stoneWeight: stoneWeight,
+      stones: stones,
+      weightBalance: balance,
       makingMethod: making.$1,
       makingValue: making.$2,
       wastageMethod: wastage.$1,
@@ -360,6 +480,141 @@ class TagParser {
       note: reasons.isEmpty ? null : 'Confirm $label: ${reasons.join('; ')}',
       source: first.raw,
     );
+  }
+
+  // ----------------------------------------------------------------- stones
+
+  List<ParsedStone> _parseStones(String text, List<List<int>> consumed) {
+    final re = RegExp(
+      '(?<![A-Z0-9])(?:(?<fancy>$_fancyLabel)|(?<dia>$_diamondLabel)|(?<stone>$_stoneLabel))'
+      // separator: punctuation, or a backslash misread as N; may wrap a line
+      r'[ \t]*(?:[:=\-–#\\/|()]|N(?=\s*[0-9.]))*[ \t]*\n?[ \t]*'
+      r'(?<num>[0-9OoIl]*[.,][0-9OoIl]+|[0-9OoIl]+)'
+      r'[ \t]*(?<unit>CTS?|CARATS?|CRT|GMS?|GRAMS?|G|KT|K)?(?![A-Z])'
+      r'(?:[ \t]*(?:[\\/|():\-]|N)?[ \t]*(?<code>[0-9]{2,5})(?![0-9.,]))?',
+      caseSensitive: false,
+    );
+    final out = <ParsedStone>[];
+    for (final m in re.allMatches(text)) {
+      final unit = m.namedGroup('unit')?.toUpperCase();
+      if (unit == 'K' || unit == 'KT') continue; // a purity, not a weight
+      final n = _parseNumber(m.namedGroup('num')!);
+      if (n == null) continue;
+      consumed.add([m.start, m.end]);
+
+      final isFancy = m.namedGroup('fancy') != null;
+      final isStone = m.namedGroup('stone') != null;
+      final label = isFancy
+          ? 'FANCY CUT'
+          : (m.namedGroup('dia') ?? m.namedGroup('stone')!)
+                .toUpperCase()
+                .replaceAll(RegExp(r'\s+'), ' ')
+                .trim();
+
+      final reasons = [...n.reasons];
+      var value = n.value;
+      var code = m.namedGroup('code');
+      // "2.13850" / "2.131850": the separator before the code was lost.
+      final decimals = n.cleaned.contains('.') ? n.cleaned.split('.')[1] : '';
+      if (code == null && decimals.length > 3) {
+        final intPart = n.cleaned.split('.')[0];
+        value = double.parse('$intPart.${decimals.substring(0, 2)}');
+        var rest = decimals.substring(2);
+        if (rest.length > 3 && rest.startsWith('1')) rest = rest.substring(1);
+        code = rest;
+        reasons.add(
+          'separator unclear in "${n.cleaned}" — read as '
+          '${value.toStringAsFixed(2)} ct, code $code',
+        );
+      }
+      if (unit != null && unit.startsWith('G')) {
+        reasons.add('unit "$unit" is unusual for stones (expected ct)');
+      }
+      if (value > 100) reasons.add('$value ct looks too large');
+
+      out.add(
+        ParsedStone(
+          label: label,
+          code: code,
+          weight: ParsedField(
+            value,
+            reasons.isEmpty ? FieldConfidence.high : FieldConfidence.low,
+            note: reasons.isEmpty
+                ? null
+                : 'Confirm $label weight: ${reasons.join('; ')}',
+            source: m.group(0)!.trim(),
+          ),
+          kind: isFancy
+              ? const ParsedField(
+                  StoneKind.diamond,
+                  FieldConfidence.low,
+                  note:
+                      'FANCY CUT read as diamonds — confirm diamond or other stone',
+                )
+              : ParsedField(
+                  isStone ? StoneKind.stone : StoneKind.diamond,
+                  FieldConfidence.high,
+                ),
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// For lines whose weight and code ran together, also try a 3-decimal
+  /// split and keep whichever makes the weights balance. A split confirmed
+  /// by the weight balance no longer needs confirmation.
+  List<ParsedStone> _resolveMerged(
+    List<ParsedStone> stones,
+    double gross,
+    double net,
+  ) {
+    bool balances(List<ParsedStone> s) => WeightBalance(
+      grossG: gross,
+      netG: net,
+      stonesCt: s.fold(0, (a, st) => a + (st.weight.value ?? 0)),
+    ).balances;
+
+    final merged = [
+      for (var i = 0; i < stones.length; i++)
+        if ((stones[i].weight.note ?? '').contains('separator unclear')) i,
+    ];
+    if (merged.isEmpty) return stones;
+
+    ParsedStone confirmed(ParsedStone st, double v, String? code) =>
+        ParsedStone(
+          label: st.label,
+          kind: st.kind,
+          code: code,
+          weight: ParsedField(
+            v,
+            FieldConfidence.high,
+            source: st.weight.source,
+          ),
+        );
+
+    if (balances(stones)) {
+      return [
+        for (var i = 0; i < stones.length; i++)
+          merged.contains(i)
+              ? confirmed(stones[i], stones[i].weight.value!, stones[i].code)
+              : stones[i],
+      ];
+    }
+    for (final i in merged) {
+      final digits = RegExp(
+        r'([0-9]+)[.,]([0-9]{4,})',
+      ).firstMatch(stones[i].weight.source ?? '');
+      if (digits == null) continue;
+      final dec = digits.group(2)!;
+      final v3 = double.parse('${digits.group(1)}.${dec.substring(0, 3)}');
+      var rest = dec.substring(3);
+      if (rest.length > 3 && rest.startsWith('1')) rest = rest.substring(1);
+      final trial = [...stones];
+      trial[i] = confirmed(stones[i], v3, rest);
+      if (balances(trial)) return trial;
+    }
+    return stones;
   }
 
   // ----------------------------------------------------------------- purity

@@ -38,6 +38,10 @@ class AppState extends ChangeNotifier {
 
   JewelleryInput get pricingDefaults => _defaults.load();
 
+  /// Remembered ₹/ct for a stone line (see [PricingDefaultsRepository]).
+  double? stoneRateFor(StoneKind kind, String? code) =>
+      _defaults.rateFor(kind, code);
+
   /// Saves (or updates, when [existingId] is given) a calculation.
   Future<CalculationRecord> saveCalculation({
     required JewelleryInput input,
