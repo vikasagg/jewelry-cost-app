@@ -153,7 +153,7 @@ class PricingOutcome {
 ///  * Diamond value  = Σ diamond lines (weight ct × rate/ct)
 ///  * Stone value    = Σ other-stone lines (weight ct × rate/ct)
 ///  * Wastage        = gold value × % / 100   OR   wastage g × gold rate/g
-///  * Making         = fixed ₹                OR   gold value × % / 100
+///  * Making         = ₹/g × gold weight  OR  fixed ₹  OR  gold value × % / 100
 ///  * Subtotal       = sum of the above
 ///  * GST            = taxable base × GST % / 100 (per configured rule)
 ///  * Total          = subtotal + GST
@@ -233,6 +233,13 @@ class PricingEngine {
 
     final int making;
     switch (input.makingMethod) {
+      case MakingMethod.perGram:
+        // Making charge per gram × gold (net) weight, e.g. 1200 × 1.35 g.
+        making = toPaise(input.makingValue! * goldWeight);
+        notes.add(
+          'Making: ${formatInr(input.makingValue!)}/g × '
+          '${goldWeight.toStringAsFixed(3)} g',
+        );
       case MakingMethod.fixed:
         making = toPaise(input.makingValue!);
         notes.add('Making: fixed ${formatInr(input.makingValue!)}');

@@ -54,7 +54,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   };
 
   Purity? _purity;
-  MakingMethod _making = MakingMethod.fixed;
+  MakingMethod _making = MakingMethod.perGram;
   WastageMethod _wastage = WastageMethod.none;
   final _stones = <_StoneRow>[];
   bool _excludeDiamond = false;
@@ -396,7 +396,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               _textField('itemName', 'Item name / description'),
 
               // --------------------------------------------- weight & purity
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const SectionTitle('Weight and purity'),
               Text(
                 'Gold purity',
@@ -465,7 +465,8 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 child: Text(
                   rate == null
                       ? 'Select purity to apply the saved gold rate'
-                      : 'Applied gold rate (${_purity!.label}): ${formatInr(rate)} per gram',
+                      : 'Applied gold rate (${_purity!.label}): ${formatInr(rate)} per gram'
+                            '${snapshot!.quotedPerGrams == 1 ? '' : ' (${formatInr(snapshot.quotedRateFor(_purity!)!)} / ${snapshot.quoteUnit})'}',
                   key: const Key('appliedRate'),
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
@@ -493,7 +494,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               ),
 
               // ------------------------------------------- diamonds & stones
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const SectionTitle('Diamonds & stones'),
               for (var i = 0; i < _stones.length; i++) ...[
                 _stoneCard(i),
@@ -535,7 +536,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               ),
 
               // ------------------------------------------------ pricing inputs
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const SectionTitle('Pricing inputs'),
               const Text(
                 'Making charges',
@@ -559,10 +560,26 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              _making == MakingMethod.fixed
-                  ? _num2('makingValue', 'Making charges', null, prefix: '₹ ')
-                  : _num2('makingValue', 'Making charges', '% of gold value'),
-              const SizedBox(height: 18),
+              switch (_making) {
+                MakingMethod.perGram => _num2(
+                  'makingValue',
+                  'Making charges',
+                  '/ g × gold wt',
+                  prefix: '₹ ',
+                ),
+                MakingMethod.fixed => _num2(
+                  'makingValue',
+                  'Making charges',
+                  null,
+                  prefix: '₹ ',
+                ),
+                MakingMethod.percentOfGold => _num2(
+                  'makingValue',
+                  'Making charges',
+                  '% of gold value',
+                ),
+              },
+              const SizedBox(height: 10),
               const Text(
                 'Wastage (one method only)',
                 style: TextStyle(color: AppColors.muted),
@@ -605,7 +622,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 _num2('wastageWeight', 'Wastage weight', 'g × gold rate'),
 
               // -------------------------------------------------------- GST
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const SectionTitle('GST'),
               _num2(
                 'gstRate',

@@ -26,6 +26,7 @@ JewelleryInput base({
 }) => JewelleryInput(
   purity: purity,
   goldWeight: goldWeight,
+  makingMethod: MakingMethod.fixed,
   makingValue: makingValue,
   gst: gst,
 );
@@ -236,6 +237,30 @@ void main() {
     });
   });
 
+  group('making charges per gram', () {
+    test('rate per gram × gold (net) weight: 1200 × 1.35 g = ₹1,620', () {
+      final r = ok(
+        base(
+          goldWeight: 1.35,
+        ).copyWith(makingMethod: MakingMethod.perGram, makingValue: 1200),
+      );
+      expect(r.makingPaise, 162000);
+    });
+
+    test('real tag 08: 1200/g × 5.886 g = ₹7,063.20', () {
+      final r = ok(
+        base(
+          goldWeight: 5.886,
+        ).copyWith(makingMethod: MakingMethod.perGram, makingValue: 1200),
+      );
+      expect(r.makingPaise, 706320);
+    });
+
+    test('is the default making method', () {
+      expect(const JewelleryInput().makingMethod, MakingMethod.perGram);
+    });
+  });
+
   group('wastage (one method at a time)', () {
     test('percentage of gold value', () {
       final r = ok(
@@ -295,6 +320,7 @@ void main() {
       purity: Purity.k22,
       goldWeight: 10,
 
+      makingMethod: MakingMethod.fixed,
       makingValue: 5000,
       wastageMethod: WastageMethod.weight,
       wastageWeight: 0.2,

@@ -716,18 +716,15 @@ class TagParser {
     }
     reasons.addAll(n.reasons);
 
-    MakingMethod method = isPercent
+    // Shop rule: making charges are per gram of gold weight unless the tag
+    // says "%" or marks a total amount with "/-".
+    final method = isPercent
         ? MakingMethod.percentOfGold
-        : MakingMethod.fixed;
-    var methodConfidence = FieldConfidence.high;
-    String? methodNote;
-    if (suffix.startsWith('/G') || suffix.startsWith('PERG')) {
-      methodConfidence = FieldConfidence.low;
-      methodNote =
-          'Making charge is printed per gram (₹${n.cleaned}/g). '
-          'Enter the total making amount or a % of gold value';
-      reasons.add('per-gram making charge needs conversion');
-    }
+        : suffix.startsWith('/-')
+        ? MakingMethod.fixed
+        : MakingMethod.perGram;
+    const methodConfidence = FieldConfidence.high;
+    const String? methodNote = null;
     if (isPercent && n.value > 100) reasons.add('${n.value}% looks too high');
 
     return (

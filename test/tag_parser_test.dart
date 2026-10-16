@@ -151,7 +151,8 @@ void main() {
   group('making & wastage', () {
     test('fixed making with rupee symbol and thousands separator', () {
       final t = parser.parse('MC: ₹ 7,000');
-      expect(t.makingMethod.value, MakingMethod.fixed);
+      // Shop rule: a bare making charge is per gram.
+      expect(t.makingMethod.value, MakingMethod.perGram);
       expect(t.makingValue.value, 7000);
       expect(t.makingValue.confidence, FieldConfidence.high);
     });
@@ -162,9 +163,16 @@ void main() {
       expect(t.makingValue.value, 12.5);
     });
 
-    test('per-gram making is flagged', () {
-      final t = parser.parse('MC 450/g');
-      expect(t.makingMethod.confidence, FieldConfidence.low);
+    test('per-gram making ("1200/g") is read as per gram', () {
+      final t = parser.parse('MC 1200/g');
+      expect(t.makingMethod.value, MakingMethod.perGram);
+      expect(t.makingMethod.confidence, FieldConfidence.high);
+      expect(t.makingValue.value, 1200);
+    });
+
+    test('"/-" marks a fixed total amount', () {
+      final t = parser.parse('mc 1500/-');
+      expect(t.makingMethod.value, MakingMethod.fixed);
     });
 
     test('wastage percent vs weight', () {

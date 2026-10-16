@@ -69,7 +69,7 @@ class SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 12, top: 4),
+    padding: const EdgeInsets.only(bottom: 8, top: 2),
     child: Row(
       children: [
         Expanded(
@@ -98,7 +98,7 @@ class StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     decoration: BoxDecoration(
       color: highlight ? AppColors.goldSoft : AppColors.tile,
       borderRadius: BorderRadius.circular(14),
@@ -314,7 +314,7 @@ class BreakdownRow extends StatelessWidget {
       color: bold ? AppColors.ink : AppColors.muted,
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

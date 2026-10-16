@@ -2,10 +2,27 @@ import 'purity.dart';
 
 /// Gold rate per gram (INR) for each purity, plus when it was last updated.
 class GoldRates {
-  const GoldRates({required this.perGram, required this.updatedAt});
+  const GoldRates({
+    required this.perGram,
+    required this.updatedAt,
+    this.quotedPerGrams = 1,
+  });
 
+  /// Rates per **1 gram**; always what pricing uses.
   final Map<Purity, double> perGram;
   final DateTime updatedAt;
+
+  /// How the user enters/reads rates: per 1 g or per 10 g (common in
+  /// India, e.g. ₹70,000 / 10 g). Display only; [perGram] stays per gram.
+  final int quotedPerGrams;
+
+  /// Rate as quoted (per [quotedPerGrams] grams), rounded to the paisa.
+  double? quotedRateFor(Purity purity) {
+    final r = perGram[purity];
+    return r == null ? null : (r * quotedPerGrams * 100).round() / 100;
+  }
+
+  String get quoteUnit => quotedPerGrams == 1 ? 'g' : '$quotedPerGrams g';
 
   double? rateFor(Purity purity) => perGram[purity];
 
@@ -15,11 +32,13 @@ class GoldRates {
       GoldRates(
         perGram: perGram ?? this.perGram,
         updatedAt: updatedAt ?? this.updatedAt,
+        quotedPerGrams: quotedPerGrams,
       );
 
   Map<String, dynamic> toJson() => {
     'perGram': {for (final e in perGram.entries) e.key.name: e.value},
     'updatedAt': updatedAt.toIso8601String(),
+    'quotedPerGrams': quotedPerGrams,
   };
 
   factory GoldRates.fromJson(Map<String, dynamic> json) {
@@ -32,6 +51,7 @@ class GoldRates {
     return GoldRates(
       perGram: map,
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      quotedPerGrams: (json['quotedPerGrams'] as num?)?.toInt() ?? 1,
     );
   }
 
@@ -39,6 +59,7 @@ class GoldRates {
   bool operator ==(Object other) =>
       other is GoldRates &&
       other.updatedAt == updatedAt &&
+      other.quotedPerGrams == quotedPerGrams &&
       Purity.values.every((p) => other.perGram[p] == perGram[p]);
 
   @override

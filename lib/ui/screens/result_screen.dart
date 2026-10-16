@@ -243,7 +243,7 @@ class _ResultScreenState extends State<ResultScreen> {
       children: [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -352,9 +352,13 @@ class _ResultScreenState extends State<ResultScreen> {
                 BreakdownRow(
                   label: 'Making charges',
                   value: formatPaise(r.makingPaise),
-                  caption: i.makingMethod == MakingMethod.fixed
-                      ? 'Fixed amount'
-                      : '${formatPercent(i.makingValue!)}% of gold value',
+                  caption: switch (i.makingMethod) {
+                    MakingMethod.perGram =>
+                      '${formatInr(i.makingValue!)}/g × ${i.goldWeight!.toStringAsFixed(3)} g',
+                    MakingMethod.fixed => 'Fixed amount',
+                    MakingMethod.percentOfGold =>
+                      '${formatPercent(i.makingValue!)}% of gold value',
+                  },
                 ),
                 const Divider(height: 16),
                 BreakdownRow(
@@ -397,7 +401,7 @@ class _ResultScreenState extends State<ResultScreen> {
                     formatPaise(r.totalPaise),
                     key: const Key('total'),
                     style: const TextStyle(
-                      fontSize: 40,
+                      fontSize: 36,
                       fontWeight: FontWeight.w700,
                       color: AppColors.goldDeep,
                     ),
@@ -416,7 +420,7 @@ class _ResultScreenState extends State<ResultScreen> {
           const SizedBox(height: 12),
           _RatesUsedCard(rates: _rates, highlight: r.purity, current: current),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         FilledButton.icon(
           key: const Key('saveHistory'),
           onPressed: _dirty ? _save : null,

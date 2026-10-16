@@ -31,6 +31,17 @@ class JewelleryCostApp extends StatelessWidget {
       title: 'Smart Jewellery Cost Calculator',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
+      // Compact UI: all text 25% smaller (on top of the phone's own
+      // font-size setting) so a screen fits with little scrolling.
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(
+            textScaler: TextScaler.linear(mq.textScaler.scale(1) * uiTextScale),
+          ),
+          child: child!,
+        );
+      },
       home: state.hasRates
           ? const DashboardScreen()
           : const RateSetupScreen(firstRun: true),

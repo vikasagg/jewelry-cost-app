@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jewellery_cost/app_state.dart';
 import 'package:jewellery_cost/data/key_value_store.dart';
 import 'package:jewellery_cost/main.dart';
+import 'package:jewellery_cost/models/purity.dart';
 import 'package:jewellery_cost/ocr/tag_parser.dart';
 import 'package:jewellery_cost/ui/screens/details_form_screen.dart';
 import 'package:jewellery_cost/ui/theme.dart';
@@ -44,23 +45,25 @@ void main() {
 
     final state = AppState(MemoryStore());
     await t.pumpWidget(JewelleryCostApp(state: state));
-    expect(find.text('Save Rates & Continue'), findsOneWidget);
+    expect(find.text('Today\'s gold rates'), findsOneWidget);
 
     // Validation: empty + negative
     await tapKey(t, 'saveRates');
     expect(find.text('Required'), findsNWidgets(4));
 
-    await enter(t, 'rate_k14', '4100');
-    await enter(t, 'rate_k18', '7000');
-    await enter(t, 'rate_k22', '6450');
+    // Rates are entered per 10 g by default and stored per gram.
+    await enter(t, 'rate_k14', '41000');
+    await enter(t, 'rate_k18', '70000');
+    await enter(t, 'rate_k22', '64500');
     await enter(t, 'rate_k24', '0');
     await tapKey(t, 'saveRates');
     expect(find.text('Must be greater than 0'), findsOneWidget);
-    await enter(t, 'rate_k24', '7700');
+    await enter(t, 'rate_k24', '77000');
     await tapKey(t, 'saveRates');
 
     expect(find.text('Scan Jewellery Tag'), findsOneWidget);
-    expect(find.text('₹7,000.00'), findsOneWidget);
+    expect(find.text('₹70,000.00'), findsOneWidget); // 18K per 10 g
+    expect(state.rates!.rateFor(Purity.k18), 7000); // per gram internally
 
     await tapKey(t, 'manualEntry');
     await enter(t, 'tagNumber', 'DR-18-0425');
@@ -78,7 +81,7 @@ void main() {
     await enter(t, 'stone.1.rate', '5000');
     final pct = find.descendant(
       of: find.byKey(const Key('makingMethod')),
-      matching: find.text('% of gold value'),
+      matching: find.text('% of gold'),
     );
     await reveal(t, pct);
     await t.tap(pct);

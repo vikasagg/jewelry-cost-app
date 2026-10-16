@@ -27,6 +27,10 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
   bool _saving = false;
   bool _loaded = false;
 
+  /// Rates are typed per this many grams (10 by default, as commonly quoted
+  /// in India); stored internally per 1 g.
+  int _perGrams = 10;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -35,8 +39,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     _multiplier.text = formatPercent(AppScope.read(context).tagRateMultiplier);
     final rates = AppScope.read(context).rates;
     if (rates != null) {
+      _perGrams = rates.quotedPerGrams;
       for (final p in Purity.values) {
-        _controllers[p]!.text = formatInput(rates.rateFor(p));
+        _controllers[p]!.text = formatInput(rates.quotedRateFor(p));
       }
     }
   }
@@ -78,9 +83,11 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     final state = AppScope.read(context);
     final rates = GoldRates(
       perGram: {
-        for (final p in Purity.values) p: parseNumber(_controllers[p]!.text)!,
+        for (final p in Purity.values)
+          p: parseNumber(_controllers[p]!.text)! / _perGrams,
       },
       updatedAt: state.now(),
+      quotedPerGrams: _perGrams,
     );
     await state.saveRates(rates);
     await state.setTagRateMultiplier(m!);
@@ -118,9 +125,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Enter the current rate per gram in ₹ for each purity. '
-                'The rate matching the item\'s purity is used directly — no extra '
-                'purity adjustment is applied.',
+                'Enter today\'s rate in ₹ for each purity. Weights are entered '
+                'in grams exactly as printed on the tag; the app converts the '
+                'rate to per gram. No extra purity adjustment is applied.',
                 style: TextStyle(color: AppColors.muted, height: 1.4),
               ),
               if (rates != null) ...[
@@ -144,14 +151,34 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
+              const Text(
+                'Rates entered per',
+                style: TextStyle(color: AppColors.muted),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<int>(
+                  key: const Key('ratePerGrams'),
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 10, label: Text('10 grams')),
+                    ButtonSegment(value: 1, label: Text('1 gram')),
+                  ],
+                  selected: {_perGrams},
+                  onSelectionChanged: (v) =>
+                      setState(() => _perGrams = v.first),
+                ),
+              ),
+              const SizedBox(height: 10),
               for (final p in Purity.values) ...[
                 NumberField(
                   fieldKey: Key('rate_${p.name}'),
                   controller: _controllers[p]!,
                   label: '${p.label} Gold rate',
                   prefix: '₹ ',
-                  unit: '/ gram',
+                  unit: _perGrams == 1 ? '/ gram' : '/ $_perGrams g',
                   errorText: _errors[p],
                   onChanged: (_) {
                     if (_errors[p] != null) setState(() => _errors[p] = null);
@@ -161,7 +188,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                   Padding(
                     padding: const EdgeInsets.only(left: 4, top: 4),
                     child: Text(
-                      'Saved: ${formatInr(rates!.rateFor(p)!)}/g',
+                      'Saved: ${formatInr(rates!.quotedRateFor(p)!)} / '
+                      '${rates.quoteUnit}'
+                      '${rates.quotedPerGrams == 1 ? '' : ' (${formatInr(rates.rateFor(p)!)}/g)'}',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.muted,
@@ -207,7 +236,7 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               FilledButton.icon(
                 key: const Key('saveRates'),
                 onPressed: _saving ? null : _save,

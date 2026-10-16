@@ -2,8 +2,9 @@ import 'purity.dart';
 
 /// How making charges are computed.
 enum MakingMethod {
-  fixed('Fixed amount (₹)'),
-  percentOfGold('% of gold value');
+  perGram('₹ per gram'),
+  fixed('Fixed ₹'),
+  percentOfGold('% of gold');
 
   const MakingMethod(this.label);
   final String label;
@@ -173,7 +174,7 @@ class JewelleryInput {
     this.stones = const [],
     this.excludeDiamond = false,
     this.excludeStone = false,
-    this.makingMethod = MakingMethod.fixed,
+    this.makingMethod = MakingMethod.perGram,
     this.makingValue,
     this.wastageMethod = WastageMethod.none,
     this.wastagePercent,
@@ -200,7 +201,8 @@ class JewelleryInput {
 
   final MakingMethod makingMethod;
 
-  /// ₹ amount when [makingMethod] is fixed, otherwise a percentage.
+  /// ₹ per gram of gold weight, a fixed ₹ amount, or a percentage —
+  /// depending on [makingMethod].
   final double? makingValue;
 
   final WastageMethod wastageMethod;

@@ -74,8 +74,13 @@ class PricingDefaultsRepository {
     final gst = raw['gst'] is Map
         ? GstConfig.fromJson((raw['gst'] as Map).cast<String, dynamic>())
         : const GstConfig(ratePercent: null);
+    final making = MakingMethod.values.where(
+      (m) => m.name == raw['makingMethod'],
+    );
     return JewelleryInput(
       gst: gst,
+      makingMethod: making.isEmpty ? MakingMethod.perGram : making.first,
+      makingValue: (raw['makingValue'] as num?)?.toDouble(),
       stones: [
         StoneLine(
           kind: StoneKind.diamond,
@@ -103,7 +108,16 @@ class PricingDefaultsRepository {
     }
     return _store.put(
       _key,
-      jsonEncode({'gst': input.gst.toJson(), 'lastRate': lastRate}),
+      jsonEncode({
+        'gst': input.gst.toJson(),
+        'lastRate': lastRate,
+        // Per-gram making rates are a shop-wide rate worth pre-filling;
+        // fixed amounts are item-specific and are not remembered.
+        if (input.makingMethod != MakingMethod.fixed) ...{
+          'makingMethod': input.makingMethod.name,
+          'makingValue': input.makingValue,
+        },
+      }),
     );
   }
 }
