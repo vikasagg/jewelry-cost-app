@@ -558,7 +558,7 @@ class _Banner extends StatelessWidget {
         Icon(icon, color: color),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(text, style: TextStyle(color: color)),
+          child: SelectableText(text, style: TextStyle(color: color)),
         ),
       ],
     ),
