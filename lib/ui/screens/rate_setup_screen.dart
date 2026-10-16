@@ -4,6 +4,7 @@ import '../../app_state.dart';
 import '../../branding.dart';
 import '../../core/money.dart';
 import '../../models/gold_rates.dart';
+import '../../models/jewellery_input.dart';
 import '../../models/purity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -23,8 +24,10 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     for (final p in Purity.values) p: TextEditingController(),
   };
   final _errors = <Purity, String?>{};
-  final _multiplier = TextEditingController();
-  String? _multiplierError;
+  final _multipliers = {
+    for (final k in StoneKind.values) k: TextEditingController(),
+  };
+  final _multiplierErrors = <StoneKind, String?>{};
   bool _saving = false;
   bool _loaded = false;
 
@@ -37,7 +40,11 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     super.didChangeDependencies();
     if (_loaded) return;
     _loaded = true;
-    _multiplier.text = formatPercent(AppScope.read(context).tagRateMultiplier);
+    for (final k in StoneKind.values) {
+      _multipliers[k]!.text = formatPercent(
+        AppScope.read(context).tagRateMultiplier(k),
+      );
+    }
     final rates = AppScope.read(context).rates;
     if (rates != null) {
       _perGrams = rates.quotedPerGrams;
@@ -52,7 +59,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     for (final c in _controllers.values) {
       c.dispose();
     }
-    _multiplier.dispose();
+    for (final c in _multipliers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -71,13 +80,19 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
         _errors[p] = _validate(_controllers[p]!.text);
       }
     });
-    final m = parseNumber(_multiplier.text);
+    final m = {
+      for (final k in StoneKind.values) k: parseNumber(_multipliers[k]!.text),
+    };
     setState(() {
-      _multiplierError = (m == null || m.isNaN || m <= 0)
-          ? 'Enter a number greater than 0'
-          : null;
+      for (final k in StoneKind.values) {
+        final v = m[k];
+        _multiplierErrors[k] = (v == null || v.isNaN || v <= 0)
+            ? 'Enter a number greater than 0'
+            : null;
+      }
     });
-    if (_errors.values.any((e) => e != null) || _multiplierError != null) {
+    if (_errors.values.any((e) => e != null) ||
+        _multiplierErrors.values.any((e) => e != null)) {
       return;
     }
     setState(() => _saving = true);
@@ -91,7 +106,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
       quotedPerGrams: _perGrams,
     );
     await state.saveRates(rates);
-    await state.setTagRateMultiplier(m!);
+    for (final k in StoneKind.values) {
+      await state.setTagRateMultiplier(k, m[k]!);
+    }
     if (!mounted) return;
     setState(() => _saving = false);
     if (widget.firstRun) {
@@ -115,6 +132,7 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
           widget.firstRun ? 'Welcome to ${Brand.name}' : 'Gold Rate Settings',
         ),
         automaticallyImplyLeading: !widget.firstRun,
+        actions: const [HistoryAction()],
       ),
       body: SafeArea(
         child: ResponsiveBody(
@@ -204,41 +222,48 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
               ],
               const SizedBox(height: 8),
               const Text(
-                'Diamond rates printed on tags',
+                'Rates printed on tags',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
               const Text(
                 'A tag line like DIA\\0.38\\700 has a rate code (700). '
-                '₹ per carat = code × this multiplier.',
+                '₹ per carat = code × multiplier.',
                 style: TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 10),
-              NumberField(
-                fieldKey: const Key('tagRateMultiplier'),
-                controller: _multiplier,
-                label: 'Tag rate multiplier',
-                unit: '×',
-                errorText: _multiplierError,
-                onChanged: (_) => setState(() => _multiplierError = null),
-              ),
-              Builder(
-                builder: (_) {
-                  final m = parseNumber(_multiplier.text);
-                  return Padding(
-                    padding: const EdgeInsets.only(left: 4, top: 4),
-                    child: Text(
-                      m == null || m.isNaN
-                          ? ''
-                          : 'Example: code 700 → ${formatInr(700 * m)} per carat',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.muted,
+              for (final k in StoneKind.values) ...[
+                NumberField(
+                  fieldKey: Key('tagRateMultiplier_${k.name}'),
+                  controller: _multipliers[k]!,
+                  label: '${k.label} rate multiplier',
+                  unit: '×',
+                  errorText: _multiplierErrors[k],
+                  onChanged: (_) => setState(() => _multiplierErrors[k] = null),
+                ),
+                Builder(
+                  builder: (_) {
+                    final v = parseNumber(_multipliers[k]!.text);
+                    final code = k == StoneKind.stone ? 600 : 700;
+                    return Padding(
+                      padding: const EdgeInsets.only(
+                        left: 4,
+                        top: 2,
+                        bottom: 8,
                       ),
-                    ),
-                  );
-                },
-              ),
+                      child: Text(
+                        v == null || v.isNaN
+                            ? ''
+                            : 'Example: code $code → ${formatInr(code * v)} per carat',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
               const SizedBox(height: 12),
               FilledButton.icon(
                 key: const Key('saveRates'),

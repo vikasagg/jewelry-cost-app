@@ -85,6 +85,11 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
         widget.parsed?.toInput(defaults, rateFor: state.stoneRateFor) ??
         defaults;
     _load(input);
+    // New scans/entries get the next automatic tag number (DJ-0001…) unless
+    // the tag itself printed one. Editable like any other field.
+    if (widget.initial == null && _c['tagNumber']!.text.trim().isEmpty) {
+      _c['tagNumber']!.text = state.nextTagNumber;
+    }
     final parsed = widget.parsed;
     if (parsed != null) {
       _uncertain.addAll(parsed.uncertainFields);
@@ -343,7 +348,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               ? 'Review Scanned Details'
               : 'Manual Jewellery Entry',
         ),
-        actions: const [RatesAction()],
+        actions: const [HistoryAction(), RatesAction()],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -737,7 +742,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 padding: const EdgeInsets.only(top: 6, right: 8),
                 child: Text(
                   'Rate from tag: ${row.code} × '
-                  '${formatPercent(AppScope.of(context).tagRateMultiplier)} = '
+                  '${formatPercent(AppScope.of(context).tagRateMultiplier(row.kind))} = '
                   '${formatInr(row.codeRate!)}/ct',
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),

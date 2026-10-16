@@ -131,19 +131,47 @@ void main() {
   });
 
   test(
-    'tag rate code × 100 = ₹ per carat; multiplier is configurable',
+    'tag rate code: diamond & polki ×100, stone ×10; configurable',
     () async {
       final store = MemoryStore();
       final state = AppState(store);
-      expect(state.tagRateMultiplier, 100);
+      expect(state.tagRateMultiplier(StoneKind.diamond), 100);
+      expect(state.tagRateMultiplier(StoneKind.stone), 10);
+      expect(state.tagRateMultiplier(StoneKind.polki), 100);
       expect(state.stoneRateFor(StoneKind.diamond, '700'), 70000);
-      expect(state.stoneRateFor(StoneKind.diamond, '750'), 75000);
       expect(state.stoneRateFor(StoneKind.diamond, '850'), 85000);
+      expect(state.stoneRateFor(StoneKind.stone, '600'), 6000);
+      expect(state.stoneRateFor(StoneKind.polki, '300'), 30000);
       expect(state.stoneRateFor(StoneKind.diamond, 'AB'), isNull);
-      await state.setTagRateMultiplier(1000);
-      expect(AppState(store).stoneRateFor(StoneKind.diamond, '70'), 70000);
+      await state.setTagRateMultiplier(StoneKind.stone, 20);
+      final reloaded = AppState(store);
+      expect(reloaded.stoneRateFor(StoneKind.stone, '600'), 12000);
+      expect(reloaded.stoneRateFor(StoneKind.diamond, '700'), 70000);
     },
   );
+
+  test('automatic DJ- tag numbers count up as estimates are saved', () async {
+    final store = MemoryStore();
+    final state = AppState(store);
+    await state.saveRates(ratesAt(5300, day1));
+    expect(state.nextTagNumber, 'DJ-0001');
+    Future<void> saveWith(String tag) async {
+      final i = input.copyWith(tagNumber: tag);
+      final r = state.engine.calculate(i, state.rates!.perGram).result!;
+      await state.saveCalculation(
+        input: i,
+        ratesSnapshot: state.rates!,
+        result: r,
+      );
+    }
+
+    await saveWith('DJ-0001');
+    expect(state.nextTagNumber, 'DJ-0002');
+    await saveWith('SHOP-77'); // non-DJ tags don't move the counter
+    expect(state.nextTagNumber, 'DJ-0002');
+    await saveWith('DJ-0010'); // edited higher number: continue after it
+    expect(AppState(store).nextTagNumber, 'DJ-0011');
+  });
 
   test('real tag 08 prices end to end with tag rates', () async {
     final state = AppState(MemoryStore());
