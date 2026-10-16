@@ -1,3 +1,4 @@
+import '../branding.dart';
 import '../core/money.dart';
 import '../models/gold_rates.dart';
 import '../models/jewellery_input.dart';
@@ -7,11 +8,11 @@ import 'widgets/common.dart';
 /// Plain-text cost summary for sharing/exporting.
 String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
   final b = StringBuffer()
-    ..writeln('JEWELLERY COST SUMMARY')
+    ..writeln(Brand.name.toUpperCase())
+    ..writeln('Jewellery Cost Estimate')
     ..writeln('Estimate only — not a tax invoice')
     ..writeln('');
   if (i.tagNumber != null) b.writeln('Tag no: ${i.tagNumber}');
-  if (i.itemName != null) b.writeln('Item: ${i.itemName}');
   b
     ..writeln('Purity: ${r.purity.label}')
     ..writeln('Gold weight: ${i.goldWeight!.toStringAsFixed(3)} g');
@@ -35,9 +36,21 @@ String buildSummaryText(JewelleryInput i, PricingResult r, GoldRates rates) {
       '(rates of ${formatDateTime(rates.updatedAt)})',
     )
     ..writeln('Gold value: ${formatPaise(r.goldValuePaise)}')
-    ..writeln('Diamond value: ${formatPaise(r.diamondValuePaise)}')
-    ..writeln('Other stone value: ${formatPaise(r.stoneValuePaise)}')
-    ..writeln('Wastage charges: ${formatPaise(r.wastagePaise)}')
+    ..write(
+      r.diamondValuePaise > 0
+          ? 'Diamond value: ${formatPaise(r.diamondValuePaise)}\n'
+          : '',
+    )
+    ..write(
+      r.stoneValuePaise > 0
+          ? 'Stone value: ${formatPaise(r.stoneValuePaise)}\n'
+          : '',
+    )
+    ..write(
+      r.polkiValuePaise > 0
+          ? 'Polki value: ${formatPaise(r.polkiValuePaise)}\n'
+          : '',
+    )
     ..writeln('Making charges: ${formatPaise(r.makingPaise)}')
     ..writeln('Subtotal: ${formatPaise(r.subtotalPaise)}')
     ..writeln('Taxable subtotal: ${formatPaise(r.taxableBasePaise)}');

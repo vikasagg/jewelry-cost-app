@@ -220,7 +220,7 @@ class _ScanScreenState extends State<ScanScreen> {
             children: [
               if (_preview == null) ..._intro() else ..._review(),
               if (_status != null) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     const SizedBox(
@@ -234,7 +234,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ],
               if (_error != null) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 _Banner(
                   text: _error!,
                   color: AppColors.error,
@@ -260,7 +260,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   List<Widget> _intro() => [
     Container(
-      height: 180,
+      height: 120,
       decoration: BoxDecoration(
         color: AppColors.tile,
         borderRadius: BorderRadius.circular(20),
@@ -274,7 +274,7 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       ),
     ),
-    const SizedBox(height: 16),
+    const SizedBox(height: 10),
     const Text(
       'Tips for a clean scan',
       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -287,7 +287,7 @@ class _ScanScreenState extends State<ScanScreen> {
       '• Crop to the printed area after capture',
       style: TextStyle(color: AppColors.muted, height: 1.6),
     ),
-    const SizedBox(height: 20),
+    const SizedBox(height: 12),
     FilledButton.icon(
       key: const Key('captureCamera'),
       onPressed: _busy ? null : () => _capture(ImageSource.camera),
@@ -309,7 +309,7 @@ class _ScanScreenState extends State<ScanScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Container(
           color: Colors.black,
-          constraints: const BoxConstraints(maxHeight: 320),
+          constraints: const BoxConstraints(maxHeight: 240),
           child: Image.memory(_preview!, fit: BoxFit.contain),
         ),
       ),
@@ -370,10 +370,9 @@ class _ScanScreenState extends State<ScanScreen> {
         ],
       ),
       if (p != null) ...[
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
         const SectionTitle('Detected on tag'),
         _DetectedRow('Tag / item code', p.tagNumber, (v) => v),
-        _DetectedRow('Item', p.itemName, (v) => v),
         _DetectedRow<Purity>('Gold purity', p.purity, (v) => v.label),
         _DetectedRow<double>(
           'Gold weight',
@@ -393,7 +392,11 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         for (final st in p.stones)
           _DetectedRow<double>(
-            '${st.label}${st.kind.value == StoneKind.stone ? ' (stone)' : ''}'
+            '${st.label}${switch (st.kind.value) {
+              StoneKind.stone => ' (stone)',
+              StoneKind.polki => ' (polki)',
+              _ => '',
+            }}'
             '${st.code == null ? '' : ' · rate ${st.code}'}',
             st.kind.needsConfirmation
                 ? ParsedField(
@@ -422,16 +425,11 @@ class _ScanScreenState extends State<ScanScreen> {
         _DetectedRow<double>(
           'Making charges',
           p.makingValue,
-          (v) => p.makingMethod.value == MakingMethod.percentOfGold
-              ? '${formatInput(v)}% of gold'
-              : formatInr(v),
-        ),
-        _DetectedRow<double>(
-          'Wastage',
-          p.wastageValue,
-          (v) => p.wastageMethod.value == WastageMethod.weight
-              ? '${formatInput(v)} g'
-              : '${formatInput(v)}%',
+          (v) => switch (p.makingMethod.value) {
+            MakingMethod.percentOfGold => '${formatInput(v)}% of gold',
+            MakingMethod.fixed => '${formatInr(v)} fixed',
+            _ => '${formatInr(v)}/g',
+          },
         ),
         const SizedBox(height: 8),
         if (p.unreadStoneWeightG != null) ...[

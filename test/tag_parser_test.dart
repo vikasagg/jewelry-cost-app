@@ -151,7 +151,8 @@ void main() {
   group('making & wastage', () {
     test('fixed making with rupee symbol and thousands separator', () {
       final t = parser.parse('MC: ₹ 7,000');
-      expect(t.makingMethod.value, MakingMethod.fixed);
+      // Shop rule: a bare making charge is per gram.
+      expect(t.makingMethod.value, MakingMethod.perGram);
       expect(t.makingValue.value, 7000);
       expect(t.makingValue.confidence, FieldConfidence.high);
     });
@@ -162,9 +163,16 @@ void main() {
       expect(t.makingValue.value, 12.5);
     });
 
-    test('per-gram making is flagged', () {
-      final t = parser.parse('MC 450/g');
-      expect(t.makingMethod.confidence, FieldConfidence.low);
+    test('per-gram making ("1200/g") is read as per gram', () {
+      final t = parser.parse('MC 1200/g');
+      expect(t.makingMethod.value, MakingMethod.perGram);
+      expect(t.makingMethod.confidence, FieldConfidence.high);
+      expect(t.makingValue.value, 1200);
+    });
+
+    test('"/-" marks a fixed total amount', () {
+      final t = parser.parse('mc 1500/-');
+      expect(t.makingMethod.value, MakingMethod.fixed);
     });
 
     test('wastage percent vs weight', () {
@@ -293,6 +301,64 @@ void main() {
         rateFor: (kind, code) => code == '700' ? 70000 : null,
       );
       expect(input.stones.map((s) => s.ratePerCt), [70000, null, null]);
+    });
+  });
+
+  group('Stn lines (weight\\code like DIA)', () {
+    test('Stn\\0.25\\600 and Stn/0.10/450 → stone lines with codes', () {
+      final t = parser.parse(
+        'N.Wt :3.250 18K\nDIA\\0.12\\700\nStn\\0.25\\600\nStn/0.10/450\n',
+      );
+      expect(t.stones.map((s) => s.label), ['DIA', 'STN', 'STN']);
+      expect(t.stones.map((s) => s.kind.value), [
+        StoneKind.diamond,
+        StoneKind.stone,
+        StoneKind.stone,
+      ]);
+      expect(t.stones.map((s) => s.weight.value), [0.12, 0.25, 0.10]);
+      expect(t.stones.map((s) => s.code), ['700', '600', '450']);
+      final input = t.toInput(
+        const JewelleryInput(),
+        rateFor: (kind, code) => double.parse(code!) * 100,
+      );
+      expect(input.stones[1].ratePerCt, 60000);
+      expect(input.stones[2].ratePerCt, 45000);
+    });
+
+    test('Stn.M is treated as Stn', () {
+      final t = parser.parse('Stn.M\\0.40\\350\nSTN.M/0.05/300');
+      expect(t.stones.map((s) => s.label), ['STN', 'STN']);
+      expect(t.stones.map((s) => s.weight.value), [0.40, 0.05]);
+      expect(t.stones.map((s) => s.code), ['350', '300']);
+      expect(t.stones.every((s) => s.kind.value == StoneKind.stone), isTrue);
+    });
+
+    test('wastage printed on a tag is ignored', () {
+      final t = parser.parse('N.Wt 2.000 22K\nWastage 8%');
+      expect(t.uncertainFields, isEmpty);
+      expect(
+        t.toInput(const JewelleryInput()).wastageMethod,
+        WastageMethod.none,
+      );
+    });
+  });
+
+  group('Polki lines', () {
+    test('Polki\\0.50\\300 is its own kind with a tag rate code', () {
+      final t = parser.parse(
+        'G.Wt :8.100 22K\nN.Wt :7.900\nDIA\\0.25\\700\nPolki\\0.50\\300\nPOLKI/0.25/250\n',
+      );
+      expect(t.stones.map((s) => s.label), ['DIA', 'POLKI', 'POLKI']);
+      expect(t.stones.map((s) => s.kind.value), [
+        StoneKind.diamond,
+        StoneKind.polki,
+        StoneKind.polki,
+      ]);
+      expect(t.stones.map((s) => s.weight.value), [0.25, 0.50, 0.25]);
+      expect(t.stones.map((s) => s.code), ['700', '300', '250']);
+      // 8.100 − 7.900 = 0.200 g = 1.00 ct = 0.25 + 0.50 + 0.25
+      expect(t.weightBalance!.balances, isTrue);
+      expect(t.uncertainFields, isEmpty);
     });
   });
 

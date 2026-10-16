@@ -18,6 +18,9 @@ class AppColors {
   static const okSoft = Color(0xFFDFF3E6);
 }
 
+/// Global text scale (0.75 = 25% smaller than Material defaults).
+const uiTextScale = 0.75;
+
 ThemeData buildTheme() {
   final scheme =
       ColorScheme.fromSeed(
@@ -37,9 +40,12 @@ ThemeData buildTheme() {
     displayColor: AppColors.ink,
   );
   return base.copyWith(
+    visualDensity: VisualDensity.compact,
+    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     scaffoldBackgroundColor: AppColors.ivory,
     textTheme: text,
     appBarTheme: const AppBarTheme(
+      toolbarHeight: 46,
       backgroundColor: AppColors.ivory,
       foregroundColor: AppColors.ink,
       elevation: 0,
@@ -63,7 +69,8 @@ ThemeData buildTheme() {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.surface,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      isDense: true,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: AppColors.line),
@@ -82,7 +89,7 @@ ThemeData buildTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.gold,
         foregroundColor: Colors.white,
-        minimumSize: const Size(64, 52),
+        minimumSize: const Size(56, 40),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
@@ -90,7 +97,7 @@ ThemeData buildTheme() {
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.goldDeep,
-        minimumSize: const Size(64, 48),
+        minimumSize: const Size(56, 36),
         side: const BorderSide(color: AppColors.gold),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -107,7 +114,7 @@ ThemeData buildTheme() {
         side: const WidgetStatePropertyAll(BorderSide(color: AppColors.line)),
       ),
     ),
-    dividerTheme: const DividerThemeData(color: AppColors.line, space: 32),
+    dividerTheme: const DividerThemeData(color: AppColors.line, space: 20),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
   );
 }

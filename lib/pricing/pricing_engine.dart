@@ -57,6 +57,7 @@ class PricingResult {
     required this.goldValuePaise,
     required this.diamondValuePaise,
     required this.stoneValuePaise,
+    this.polkiValuePaise = 0,
     this.stoneLinePaise = const [],
     required this.wastagePaise,
     required this.makingPaise,
@@ -73,6 +74,7 @@ class PricingResult {
   final int goldValuePaise;
   final int diamondValuePaise;
   final int stoneValuePaise;
+  final int polkiValuePaise;
 
   /// Value of each entry in [JewelleryInput.stones], in the same order.
   final List<int> stoneLinePaise;
@@ -91,6 +93,7 @@ class PricingResult {
     PriceComponent.gold => goldValuePaise,
     PriceComponent.diamond => diamondValuePaise,
     PriceComponent.stone => stoneValuePaise,
+    PriceComponent.polki => polkiValuePaise,
     PriceComponent.wastage => wastagePaise,
     PriceComponent.making => makingPaise,
   };
@@ -101,6 +104,7 @@ class PricingResult {
     'goldValuePaise': goldValuePaise,
     'diamondValuePaise': diamondValuePaise,
     'stoneValuePaise': stoneValuePaise,
+    'polkiValuePaise': polkiValuePaise,
     'stoneLinePaise': stoneLinePaise,
     'wastagePaise': wastagePaise,
     'makingPaise': makingPaise,
@@ -118,6 +122,7 @@ class PricingResult {
     goldValuePaise: j['goldValuePaise'] as int,
     diamondValuePaise: j['diamondValuePaise'] as int,
     stoneValuePaise: j['stoneValuePaise'] as int,
+    polkiValuePaise: j['polkiValuePaise'] as int? ?? 0,
     stoneLinePaise: ((j['stoneLinePaise'] as List?) ?? const []).cast<int>(),
     wastagePaise: j['wastagePaise'] as int,
     makingPaise: j['makingPaise'] as int,
@@ -151,9 +156,10 @@ class PricingOutcome {
 /// Formulas:
 ///  * Gold value     = gold weight (g) × gold rate/g for the selected purity
 ///  * Diamond value  = Σ diamond lines (weight ct × rate/ct)
-///  * Stone value    = Σ other-stone lines (weight ct × rate/ct)
+///  * Stone value    = Σ stone lines (weight ct × rate/ct)
+///  * Polki value    = Σ polki lines (weight ct × rate/ct)
 ///  * Wastage        = gold value × % / 100   OR   wastage g × gold rate/g
-///  * Making         = fixed ₹                OR   gold value × % / 100
+///  * Making         = ₹/g × gold weight  OR  fixed ₹  OR  gold value × % / 100
 ///  * Subtotal       = sum of the above
 ///  * GST            = taxable base × GST % / 100 (per configured rule)
 ///  * Total          = subtotal + GST
@@ -187,20 +193,21 @@ class PricingEngine {
     final linePaise = <int>[];
     var diamond = 0;
     var stone = 0;
+    var polki = 0;
     for (final line in input.stones) {
-      final excluded = line.kind == StoneKind.diamond
-          ? input.excludeDiamond
-          : input.excludeStone;
-      if (excluded || !line.hasWeight) {
+      if (input.isExcluded(line.kind) || !line.hasWeight) {
         linePaise.add(0);
         continue;
       }
       final v = toPaise(line.weightCt! * line.ratePerCt!);
       linePaise.add(v);
-      if (line.kind == StoneKind.diamond) {
-        diamond += v;
-      } else {
-        stone += v;
+      switch (line.kind) {
+        case StoneKind.diamond:
+          diamond += v;
+        case StoneKind.stone:
+          stone += v;
+        case StoneKind.polki:
+          polki += v;
       }
       notes.add(
         '${line.displayName}: ${line.weightCt!.toStringAsFixed(2)} ct × '
@@ -211,7 +218,7 @@ class PricingEngine {
       notes.add('Diamond value excluded by user');
     }
     if (input.excludeStone && input.stoneWeight > 0) {
-      notes.add('Other stone value excluded by user');
+      notes.add('Stone value excluded by user');
     }
 
     var wastage = 0;
@@ -233,6 +240,13 @@ class PricingEngine {
 
     final int making;
     switch (input.makingMethod) {
+      case MakingMethod.perGram:
+        // Making charge per gram × gold (net) weight, e.g. 1200 × 1.35 g.
+        making = toPaise(input.makingValue! * goldWeight);
+        notes.add(
+          'Making: ${formatInr(input.makingValue!)}/g × '
+          '${goldWeight.toStringAsFixed(3)} g',
+        );
       case MakingMethod.fixed:
         making = toPaise(input.makingValue!);
         notes.add('Making: fixed ${formatInr(input.makingValue!)}');
@@ -247,6 +261,7 @@ class PricingEngine {
       PriceComponent.gold: gold,
       PriceComponent.diamond: diamond,
       PriceComponent.stone: stone,
+      PriceComponent.polki: polki,
       PriceComponent.wastage: wastage,
       PriceComponent.making: making,
     };
@@ -298,6 +313,7 @@ class PricingEngine {
         goldValuePaise: gold,
         diamondValuePaise: diamond,
         stoneValuePaise: stone,
+        polkiValuePaise: polki,
         stoneLinePaise: linePaise,
         wastagePaise: wastage,
         makingPaise: making,
@@ -353,17 +369,17 @@ class PricingEngine {
       final name = line.displayName;
       nonNegative('stone.$i.weight', line.weightCt, '$name weight');
       nonNegative('stone.$i.rate', line.ratePerCt, '$name rate');
-      final excluded = line.kind == StoneKind.diamond
-          ? input.excludeDiamond
-          : input.excludeStone;
+      final excluded = input.isExcluded(line.kind);
       if (line.hasWeight && !excluded && line.ratePerCt == null) {
         issues.add(
-          PricingIssue(
-            'stone.$i.rate',
-            line.kind == StoneKind.diamond
-                ? '$name weight is present: enter a rate per carat or exclude diamond value'
-                : '$name weight is present: enter a rate per carat (0 allowed) or exclude stone value',
-          ),
+          PricingIssue('stone.$i.rate', switch (line.kind) {
+            StoneKind.diamond =>
+              '$name weight is present: enter a rate per carat or exclude diamond value',
+            StoneKind.stone =>
+              '$name weight is present: enter a rate per carat (0 allowed) or exclude stone value',
+            StoneKind.polki =>
+              '$name weight is present: enter a rate per carat (0 allowed)',
+          }),
         );
       }
     }

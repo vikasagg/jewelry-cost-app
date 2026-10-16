@@ -1,8 +1,12 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app_state.dart';
+import '../../branding.dart';
 import '../../core/money.dart';
 import '../../models/gold_rates.dart';
 import '../../models/jewellery_input.dart';
@@ -117,6 +121,67 @@ class _ResultScreenState extends State<ResultScreen> {
     nav.push(MaterialPageRoute(builder: (_) => const ScanScreen()));
   }
 
+  final _summaryKey = GlobalKey();
+  final _scroll = ScrollController();
+  bool _sharingImage = false;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Captures the cost summary card as a PNG and opens the share sheet
+  /// (pick WhatsApp there).
+  Future<void> _sendImage() async {
+    setState(() => _sharingImage = true);
+    try {
+      // The card must be on screen to be painted.
+      if (_scroll.hasClients && _scroll.offset > 0) {
+        await _scroll.animateTo(
+          0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+      await WidgetsBinding.instance.endOfFrame;
+      final boundary =
+          _summaryKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) throw StateError('Summary not visible');
+      final image = await boundary.toImage(pixelRatio: 3);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      if (data == null) throw StateError('Could not create image');
+      final tag = (_input.tagNumber ?? 'estimate').replaceAll(
+        RegExp(r'[^A-Za-z0-9-]'),
+        '_',
+      );
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              data.buffer.asUint8List(),
+              mimeType: 'image/png',
+              name: 'jewellery-estimate-$tag.png',
+            ),
+          ],
+          text:
+              '${Brand.name} – jewellery cost estimate${_input.tagNumber == null ? '' : ' – ${_input.tagNumber}'}: '
+              '${formatPaise(_result!.totalPaise)}',
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not share the image: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharingImage = false);
+    }
+  }
+
   Future<void> _share() async {
     final text = buildSummaryText(_input, _result!, _rates);
     await showModalBottomSheet<void>(
@@ -189,9 +254,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
   /// One line per stone group, e.g. "DIA 0.38 ct × ₹70,000.00 = ₹26,600.00".
   String? _stonesCaption(JewelleryInput i, PricingResult r, StoneKind kind) {
-    final excluded = kind == StoneKind.diamond
-        ? i.excludeDiamond
-        : i.excludeStone;
+    final excluded = i.isExcluded(kind);
     final lines = <String>[];
     for (var k = 0; k < i.stones.length; k++) {
       final s = i.stones[k];
@@ -239,176 +302,165 @@ class _ResultScreenState extends State<ResultScreen> {
     final historical = current != null && current != _rates;
     return ListView(
       key: const Key('resultList'),
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Jewellery Cost Summary',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    if (!_dirty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.okSoft,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'Saved',
-                          style: TextStyle(
-                            color: AppColors.ok,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  i.displayName,
-                  style: const TextStyle(color: AppColors.muted),
-                ),
-                const SizedBox(height: 14),
+        RepaintBoundary(
+          key: _summaryKey,
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Branded header — this card is what customers receive
+                  // as the WhatsApp image.
+                  BrandHeader(
+                    subtitle:
+                        'Jewellery Cost Estimate · ${formatDateTime(widget.savedAt ?? AppScope.of(context).now())}',
+                  ),
+                  const SizedBox(height: 12),
 
-                // Jewellery details
-                TileGrid(
-                  children: [
-                    StatTile(
-                      label: 'Item / Tag',
-                      value: i.tagNumber ?? i.itemName ?? '—',
-                    ),
-                    StatTile(label: 'Gold Purity', value: r.purity.label),
-                    StatTile(
-                      label: 'Gold Weight',
-                      value: '${i.goldWeight!.toStringAsFixed(3)} g',
-                    ),
-                    StatTile(
-                      label: 'Diamond Weight',
-                      value: '${i.diamondWeight.toStringAsFixed(2)} ct',
-                    ),
-                    StatTile(
-                      label: 'Other Stone',
-                      value: '${i.stoneWeight.toStringAsFixed(2)} ct',
-                    ),
-                    if (i.grossWeight != null)
+                  // Jewellery details
+                  TileGrid(
+                    children: [
+                      if ((i.tagNumber ?? '').trim().isNotEmpty)
+                        StatTile(label: 'Tag No.', value: i.tagNumber!),
+                      StatTile(label: 'Gold Purity', value: r.purity.label),
                       StatTile(
-                        label: 'Gross Weight',
-                        value: '${i.grossWeight!.toStringAsFixed(3)} g',
+                        label: 'Gold Weight',
+                        value: '${i.goldWeight!.toStringAsFixed(3)} g',
                       ),
-                  ],
-                ),
-                const Divider(),
-
-                // Price breakdown
-                const SectionTitle('Price Breakdown'),
-                BreakdownRow(
-                  label: 'Applicable gold rate (${r.purity.label})',
-                  value: '${formatInr(r.goldRatePerGram)}/g',
-                  caption: 'Rates saved ${formatDateTime(_rates.updatedAt)}',
-                ),
-                BreakdownRow(
-                  label: 'Gold value',
-                  valueKey: const Key('goldValue'),
-                  value: formatPaise(r.goldValuePaise),
-                  caption:
-                      '${i.goldWeight!.toStringAsFixed(3)} g × ${formatInr(r.goldRatePerGram)}',
-                ),
-                BreakdownRow(
-                  label: 'Diamond value',
-                  value: formatPaise(r.diamondValuePaise),
-                  caption: _stonesCaption(i, r, StoneKind.diamond),
-                ),
-                BreakdownRow(
-                  label: 'Other stone value',
-                  value: formatPaise(r.stoneValuePaise),
-                  caption: _stonesCaption(i, r, StoneKind.stone),
-                ),
-                BreakdownRow(
-                  label: 'Wastage charges',
-                  value: formatPaise(r.wastagePaise),
-                  caption: switch (i.wastageMethod) {
-                    WastageMethod.none => 'None',
-                    WastageMethod.percent =>
-                      '${formatPercent(i.wastagePercent!)}% of gold value',
-                    WastageMethod.weight =>
-                      '${i.wastageWeight!.toStringAsFixed(3)} g × ${formatInr(r.goldRatePerGram)}',
-                  },
-                ),
-                BreakdownRow(
-                  label: 'Making charges',
-                  value: formatPaise(r.makingPaise),
-                  caption: i.makingMethod == MakingMethod.fixed
-                      ? 'Fixed amount'
-                      : '${formatPercent(i.makingValue!)}% of gold value',
-                ),
-                const Divider(height: 16),
-                BreakdownRow(
-                  label: 'Subtotal',
-                  value: formatPaise(r.subtotalPaise),
-                  bold: true,
-                ),
-                BreakdownRow(
-                  label: 'Taxable subtotal',
-                  value: formatPaise(r.taxableBasePaise),
-                  caption: r.gstLines.isEmpty
-                      ? 'No components taxable'
-                      : r.gstLines
-                            .expand((l) => l.components)
-                            .map(
-                              (c) => c.label
-                                  .replaceAll(' value', '')
-                                  .replaceAll(' charges', ''),
-                            )
-                            .join(' + '),
-                ),
-                for (final l in r.gstLines)
-                  BreakdownRow(
-                    label: '${l.label} @ ${formatPercent(l.ratePercent)}%',
-                    value: formatPaise(l.amountPaise),
-                    caption: 'on ${formatPaise(l.basePaise)}',
+                      if (i.diamondWeight > 0)
+                        StatTile(
+                          label: 'Diamond Weight',
+                          value: '${i.diamondWeight.toStringAsFixed(2)} ct',
+                        ),
+                      if (i.stoneWeight > 0)
+                        StatTile(
+                          label: 'Stone Weight',
+                          value: '${i.stoneWeight.toStringAsFixed(2)} ct',
+                        ),
+                      if (i.polkiWeight > 0)
+                        StatTile(
+                          label: 'Polki Weight',
+                          value: '${i.polkiWeight.toStringAsFixed(2)} ct',
+                        ),
+                      if (i.grossWeight != null)
+                        StatTile(
+                          label: 'Gross Weight',
+                          value: '${i.grossWeight!.toStringAsFixed(3)} g',
+                        ),
+                    ],
                   ),
-                if (r.gstLines.isEmpty)
-                  const BreakdownRow(label: 'GST', value: '₹0.00'),
-                const Divider(),
-                const Text(
-                  'Total estimated jewellery cost',
-                  style: TextStyle(color: AppColors.muted),
-                ),
-                const SizedBox(height: 6),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    formatPaise(r.totalPaise),
-                    key: const Key('total'),
-                    style: const TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.goldDeep,
+                  const Divider(),
+
+                  // Price breakdown
+                  const SectionTitle('Price Breakdown'),
+                  BreakdownRow(
+                    label: 'Applicable gold rate (${r.purity.label})',
+                    value: '${formatInr(r.goldRatePerGram)}/g',
+                    caption: 'Rates saved ${formatDateTime(_rates.updatedAt)}',
+                  ),
+                  BreakdownRow(
+                    label: 'Gold value',
+                    valueKey: const Key('goldValue'),
+                    value: formatPaise(r.goldValuePaise),
+                    caption:
+                        '${i.goldWeight!.toStringAsFixed(3)} g × ${formatInr(r.goldRatePerGram)}',
+                  ),
+                  // Zero-value lines are left out of the estimate.
+                  if (r.diamondValuePaise > 0)
+                    BreakdownRow(
+                      label: 'Diamond value',
+                      value: formatPaise(r.diamondValuePaise),
+                      caption: _stonesCaption(i, r, StoneKind.diamond),
+                    ),
+                  if (r.stoneValuePaise > 0)
+                    BreakdownRow(
+                      label: 'Stone value',
+                      value: formatPaise(r.stoneValuePaise),
+                      caption: _stonesCaption(i, r, StoneKind.stone),
+                    ),
+                  if (r.polkiValuePaise > 0)
+                    BreakdownRow(
+                      label: 'Polki value',
+                      value: formatPaise(r.polkiValuePaise),
+                      caption: _stonesCaption(i, r, StoneKind.polki),
+                    ),
+                  // Wastage is no longer used; shown only for old saved records.
+                  if (r.wastagePaise > 0)
+                    BreakdownRow(
+                      label: 'Wastage charges',
+                      value: formatPaise(r.wastagePaise),
+                    ),
+                  BreakdownRow(
+                    label: 'Making charges',
+                    value: formatPaise(r.makingPaise),
+                    caption: switch (i.makingMethod) {
+                      MakingMethod.perGram =>
+                        '${formatInr(i.makingValue!)}/g × ${i.goldWeight!.toStringAsFixed(3)} g',
+                      MakingMethod.fixed => 'Fixed amount',
+                      MakingMethod.percentOfGold =>
+                        '${formatPercent(i.makingValue!)}% of gold value',
+                    },
+                  ),
+                  const Divider(height: 16),
+                  BreakdownRow(
+                    label: 'Subtotal',
+                    value: formatPaise(r.subtotalPaise),
+                    bold: true,
+                  ),
+                  BreakdownRow(
+                    label: 'Taxable subtotal',
+                    value: formatPaise(r.taxableBasePaise),
+                    caption: r.gstLines.isEmpty
+                        ? 'No components taxable'
+                        : r.gstLines
+                              .expand((l) => l.components)
+                              // Only parts that actually add to the base.
+                              .where((c) => r.componentPaise(c) > 0)
+                              .map(
+                                (c) => c.label
+                                    .replaceAll(' value', '')
+                                    .replaceAll(' charges', ''),
+                              )
+                              .join(' + '),
+                  ),
+                  for (final l in r.gstLines)
+                    BreakdownRow(
+                      label: '${l.label} @ ${formatPercent(l.ratePercent)}%',
+                      value: formatPaise(l.amountPaise),
+                      caption: 'on ${formatPaise(l.basePaise)}',
+                    ),
+                  if (r.gstLines.isEmpty)
+                    const BreakdownRow(label: 'GST', value: '₹0.00'),
+                  const Divider(),
+                  const Text(
+                    'Total estimated jewellery cost',
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 6),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      formatPaise(r.totalPaise),
+                      key: const Key('total'),
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.goldDeep,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Estimate only — not a tax invoice.',
-                  style: TextStyle(fontSize: 12, color: AppColors.muted),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Estimate only — not a tax invoice.',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -416,7 +468,17 @@ class _ResultScreenState extends State<ResultScreen> {
           const SizedBox(height: 12),
           _RatesUsedCard(rates: _rates, highlight: r.purity, current: current),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          key: const Key('sendWhatsApp'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF25D366), // WhatsApp green
+          ),
+          onPressed: _sharingImage ? null : _sendImage,
+          icon: const Icon(Icons.send),
+          label: Text(_sharingImage ? 'Preparing image…' : 'Send on WhatsApp'),
+        ),
+        const SizedBox(height: 8),
         FilledButton.icon(
           key: const Key('saveHistory'),
           onPressed: _dirty ? _save : null,
@@ -447,7 +509,7 @@ class _ResultScreenState extends State<ResultScreen> {
             OutlinedButton.icon(
               onPressed: _share,
               icon: const Icon(Icons.ios_share),
-              label: const Text('Share / Export'),
+              label: const Text('Share as text'),
             ),
             OutlinedButton.icon(
               onPressed: _scanAnother,

@@ -54,8 +54,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   };
 
   Purity? _purity;
-  MakingMethod _making = MakingMethod.fixed;
-  WastageMethod _wastage = WastageMethod.none;
+  MakingMethod _making = MakingMethod.perGram;
   final _stones = <_StoneRow>[];
   bool _excludeDiamond = false;
   bool _excludeStone = false;
@@ -120,7 +119,6 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     _c['gstMakingRate']!.text = formatInput(i.gst.makingRatePercent);
     _purity = i.purity;
     _making = i.makingMethod;
-    _wastage = i.wastageMethod;
     _excludeDiamond = i.excludeDiamond;
     _excludeStone = i.excludeStone;
     _taxable = i.gst.taxable.toSet();
@@ -159,7 +157,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     excludeStone: _excludeStone,
     makingMethod: _making,
     makingValue: _num('makingValue'),
-    wastageMethod: _wastage,
+    wastageMethod: WastageMethod.none, // wastage is not used
     wastagePercent: _num('wastagePercent'),
     wastageWeight: _num('wastageWeight'),
     gst: GstConfig(
@@ -392,11 +390,9 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               // ---------------------------------------------- identification
               const SectionTitle('Jewellery identification'),
               _textField('tagNumber', 'Tag number / item code'),
-              const SizedBox(height: 12),
-              _textField('itemName', 'Item name / description'),
 
               // --------------------------------------------- weight & purity
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const SectionTitle('Weight and purity'),
               Text(
                 'Gold purity',
@@ -465,7 +461,8 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 child: Text(
                   rate == null
                       ? 'Select purity to apply the saved gold rate'
-                      : 'Applied gold rate (${_purity!.label}): ${formatInr(rate)} per gram',
+                      : 'Applied gold rate (${_purity!.label}): ${formatInr(rate)} per gram'
+                            '${snapshot!.quotedPerGrams == 1 ? '' : ' (${formatInr(snapshot.quotedRateFor(_purity!)!)} / ${snapshot.quoteUnit})'}',
                   key: const Key('appliedRate'),
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
@@ -493,29 +490,41 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               ),
 
               // ------------------------------------------- diamonds & stones
-              const SizedBox(height: 24),
-              const SectionTitle('Diamonds & stones'),
-              for (var i = 0; i < _stones.length; i++) ...[
-                _stoneCard(i),
-                const SizedBox(height: 10),
+              const SizedBox(height: 14),
+              const SectionTitle('Diamonds, stones & polki'),
+              // One sub-section per kind; each line keeps its index.
+              for (final kind in StoneKind.values) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        switch (kind) {
+                          StoneKind.diamond => 'Diamonds',
+                          StoneKind.stone => 'Stones',
+                          StoneKind.polki => 'Polki',
+                        },
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.goldDeep,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      key: Key('add_${kind.name}'),
+                      onPressed: () => _addStone(kind),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: Text('Add ${kind.label.toLowerCase()}'),
+                    ),
+                  ],
+                ),
+                for (var i = 0; i < _stones.length; i++)
+                  if (_stones[i].kind == kind) ...[
+                    _stoneCard(i),
+                    const SizedBox(height: 8),
+                  ],
+                const SizedBox(height: 4),
               ],
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    key: const Key('addDiamond'),
-                    onPressed: () => _addStone(StoneKind.diamond),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Diamond line'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _addStone(StoneKind.stone),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Other stone line'),
-                  ),
-                ],
-              ),
               _weightBalance(),
               _excludeSwitch(
                 'Exclude diamond value',
@@ -526,7 +535,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 }),
               ),
               _excludeSwitch(
-                'Exclude other stone value',
+                'Exclude stone value',
                 _excludeStone,
                 (v) => setState(() {
                   _excludeStone = v;
@@ -535,7 +544,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               ),
 
               // ------------------------------------------------ pricing inputs
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const SectionTitle('Pricing inputs'),
               const Text(
                 'Making charges',
@@ -559,53 +568,28 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              _making == MakingMethod.fixed
-                  ? _num2('makingValue', 'Making charges', null, prefix: '₹ ')
-                  : _num2('makingValue', 'Making charges', '% of gold value'),
-              const SizedBox(height: 18),
-              const Text(
-                'Wastage (one method only)',
-                style: TextStyle(color: AppColors.muted),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<WastageMethod>(
-                  key: const Key('wastageMethod'),
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(
-                      value: WastageMethod.none,
-                      label: Text('None'),
-                    ),
-                    ButtonSegment(
-                      value: WastageMethod.percent,
-                      label: Text('%'),
-                    ),
-                    ButtonSegment(
-                      value: WastageMethod.weight,
-                      label: Text('Grams'),
-                    ),
-                  ],
-                  selected: {_wastage},
-                  onSelectionChanged: (s) {
-                    setState(() {
-                      // The method choice resolves any "% or grams?" doubt.
-                      _uncertain.remove('wastagePercent');
-                      _uncertain.remove('wastageWeight');
-                      _wastage = s.first;
-                    });
-                  },
+              switch (_making) {
+                MakingMethod.perGram => _num2(
+                  'makingValue',
+                  'Making charges',
+                  '/ g × gold wt',
+                  prefix: '₹ ',
                 ),
-              ),
-              const SizedBox(height: 10),
-              if (_wastage == WastageMethod.percent)
-                _num2('wastagePercent', 'Wastage', '% of gold value'),
-              if (_wastage == WastageMethod.weight)
-                _num2('wastageWeight', 'Wastage weight', 'g × gold rate'),
+                MakingMethod.fixed => _num2(
+                  'makingValue',
+                  'Making charges',
+                  null,
+                  prefix: '₹ ',
+                ),
+                MakingMethod.percentOfGold => _num2(
+                  'makingValue',
+                  'Making charges',
+                  '% of gold value',
+                ),
+              },
 
               // -------------------------------------------------------- GST
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const SectionTitle('GST'),
               _num2(
                 'gstRate',
@@ -622,7 +606,9 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 spacing: 8,
                 runSpacing: 4,
                 children: [
-                  for (final comp in PriceComponent.values)
+                  for (final comp in PriceComponent.values.where(
+                    (c) => c != PriceComponent.wastage,
+                  ))
                     FilterChip(
                       label: Text(comp.label),
                       selected: _taxable.contains(comp),
@@ -670,9 +656,11 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   Widget _stoneCard(int i) {
     final row = _stones[i];
     final kindKey = 'stone.$i.kind';
-    final excluded = row.kind == StoneKind.diamond
-        ? _excludeDiamond
-        : _excludeStone;
+    final excluded = switch (row.kind) {
+      StoneKind.diamond => _excludeDiamond,
+      StoneKind.stone => _excludeStone,
+      StoneKind.polki => false,
+    };
     return Card(
       key: ValueKey(row),
       child: Padding(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
+import '../../branding.dart';
 import '../../core/money.dart';
 import '../../models/purity.dart';
 import '../theme.dart';
@@ -23,7 +24,7 @@ class DashboardScreen extends StatelessWidget {
     final historyCount = state.history.all().length;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Jewellery Cost'),
+        title: const BrandHeader(size: 34),
         actions: const [RatesAction()],
       ),
       body: SafeArea(
@@ -40,13 +41,13 @@ class DashboardScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   onTap: () => _open(context, const ScanScreen()),
                   child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     child: Row(
                       children: [
                         Icon(
                           Icons.document_scanner_outlined,
                           color: Colors.white,
-                          size: 40,
+                          size: 30,
                         ),
                         SizedBox(width: 16),
                         Expanded(
@@ -100,7 +101,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               SectionTitle(
                 'Current gold rates',
                 trailing: TextButton(
@@ -115,8 +116,8 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     for (final p in Purity.values)
                       StatTile(
-                        label: '${p.label} per gram',
-                        value: formatInr(rates.rateFor(p) ?? 0),
+                        label: '${p.label} per ${rates.quoteUnit}',
+                        value: formatInr(rates.quotedRateFor(p) ?? 0),
                       ),
                   ],
                 ),

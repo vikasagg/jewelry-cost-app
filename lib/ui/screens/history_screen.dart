@@ -158,6 +158,7 @@ class _RecordCard extends StatelessWidget {
       '${r.purity.label} · ${i.goldWeight!.toStringAsFixed(3)} g',
       if (i.diamondWeight > 0) 'D ${i.diamondWeight.toStringAsFixed(2)} ct',
       if (i.stoneWeight > 0) 'S ${i.stoneWeight.toStringAsFixed(2)} ct',
+      if (i.polkiWeight > 0) 'Polki ${i.polkiWeight.toStringAsFixed(2)} ct',
     ];
     return Card(
       child: InkWell(
@@ -208,7 +209,7 @@ class _RecordCard extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'Gold rate ${formatInr(record.goldRateUsed)}/g · '
-                'Making ${formatPaise(r.makingPaise)} · Wastage ${formatPaise(r.wastagePaise)} · '
+                'Making ${formatPaise(r.makingPaise)} · '
                 'GST ${r.gstLines.map((l) => '${formatPercent(l.ratePercent)}%').join('+')}',
                 style: const TextStyle(color: AppColors.muted, fontSize: 13),
               ),

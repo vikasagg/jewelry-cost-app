@@ -26,6 +26,7 @@ JewelleryInput base({
 }) => JewelleryInput(
   purity: purity,
   goldWeight: goldWeight,
+  makingMethod: MakingMethod.fixed,
   makingValue: makingValue,
   gst: gst,
 );
@@ -236,6 +237,30 @@ void main() {
     });
   });
 
+  group('making charges per gram', () {
+    test('rate per gram × gold (net) weight: 1200 × 1.35 g = ₹1,620', () {
+      final r = ok(
+        base(
+          goldWeight: 1.35,
+        ).copyWith(makingMethod: MakingMethod.perGram, makingValue: 1200),
+      );
+      expect(r.makingPaise, 162000);
+    });
+
+    test('real tag 08: 1200/g × 5.886 g = ₹7,063.20', () {
+      final r = ok(
+        base(
+          goldWeight: 5.886,
+        ).copyWith(makingMethod: MakingMethod.perGram, makingValue: 1200),
+      );
+      expect(r.makingPaise, 706320);
+    });
+
+    test('is the default making method', () {
+      expect(const JewelleryInput().makingMethod, MakingMethod.perGram);
+    });
+  });
+
   group('wastage (one method at a time)', () {
     test('percentage of gold value', () {
       final r = ok(
@@ -295,6 +320,7 @@ void main() {
       purity: Purity.k22,
       goldWeight: 10,
 
+      makingMethod: MakingMethod.fixed,
       makingValue: 5000,
       wastageMethod: WastageMethod.weight,
       wastageWeight: 0.2,
@@ -422,6 +448,45 @@ void main() {
       );
       expect(o.issues.single.field, 'stone.0.rate');
     });
+  });
+
+  test('polki is priced like diamonds/stones but totalled separately', () {
+    final r = ok(
+      base().copyWith(
+        stones: const [
+          StoneLine(
+            kind: StoneKind.diamond,
+            weightCt: 0.25,
+            ratePerCt: 70000,
+            code: '700',
+          ),
+          StoneLine(
+            kind: StoneKind.polki,
+            label: 'POLKI',
+            weightCt: 0.50,
+            ratePerCt: 30000,
+            code: '300',
+          ),
+          StoneLine(kind: StoneKind.stone, weightCt: 0.10, ratePerCt: 45000),
+        ],
+      ),
+    );
+    expect(r.diamondValuePaise, 1750000);
+    expect(r.polkiValuePaise, 1500000);
+    expect(r.stoneValuePaise, 450000);
+    expect(r.componentPaise(PriceComponent.polki), 1500000);
+    // Polki is taxable by default.
+    expect(r.taxableBasePaise, r.subtotalPaise);
+  });
+
+  test('polki line without a rate is reported against that line', () {
+    final o = engine.calculate(
+      base().copyWith(
+        stones: const [StoneLine(kind: StoneKind.polki, weightCt: 0.5)],
+      ),
+      rates,
+    );
+    expect(o.issues.single.field, 'stone.0.rate');
   });
 
   test('line items always sum to totals', () {

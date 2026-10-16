@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jewellery_cost/app_state.dart';
 import 'package:jewellery_cost/data/key_value_store.dart';
 import 'package:jewellery_cost/main.dart';
+import 'package:jewellery_cost/models/gold_rates.dart';
+import 'package:jewellery_cost/models/purity.dart';
 import 'package:jewellery_cost/ocr/tag_parser.dart';
 import 'package:jewellery_cost/ui/screens/details_form_screen.dart';
 import 'package:jewellery_cost/ui/theme.dart';
@@ -44,23 +46,25 @@ void main() {
 
     final state = AppState(MemoryStore());
     await t.pumpWidget(JewelleryCostApp(state: state));
-    expect(find.text('Save Rates & Continue'), findsOneWidget);
+    expect(find.text('Today\'s gold rates'), findsOneWidget);
 
     // Validation: empty + negative
     await tapKey(t, 'saveRates');
     expect(find.text('Required'), findsNWidgets(4));
 
-    await enter(t, 'rate_k14', '4100');
-    await enter(t, 'rate_k18', '7000');
-    await enter(t, 'rate_k22', '6450');
+    // Rates are entered per 10 g by default and stored per gram.
+    await enter(t, 'rate_k14', '41000');
+    await enter(t, 'rate_k18', '70000');
+    await enter(t, 'rate_k22', '64500');
     await enter(t, 'rate_k24', '0');
     await tapKey(t, 'saveRates');
     expect(find.text('Must be greater than 0'), findsOneWidget);
-    await enter(t, 'rate_k24', '7700');
+    await enter(t, 'rate_k24', '77000');
     await tapKey(t, 'saveRates');
 
     expect(find.text('Scan Jewellery Tag'), findsOneWidget);
-    expect(find.text('₹7,000.00'), findsOneWidget);
+    expect(find.text('₹70,000.00'), findsOneWidget); // 18K per 10 g
+    expect(state.rates!.rateFor(Purity.k18), 7000); // per gram internally
 
     await tapKey(t, 'manualEntry');
     await enter(t, 'tagNumber', 'DR-18-0425');
@@ -78,33 +82,30 @@ void main() {
     await enter(t, 'stone.1.rate', '5000');
     final pct = find.descendant(
       of: find.byKey(const Key('makingMethod')),
-      matching: find.text('% of gold value'),
+      matching: find.text('% of gold'),
     );
     await reveal(t, pct);
     await t.tap(pct);
     await t.pumpAndSettle();
     await enter(t, 'makingValue', '10');
-    final wpct = find.descendant(
-      of: find.byKey(const Key('wastageMethod')),
-      matching: find.text('%'),
-    );
-    await reveal(t, wpct);
-    await t.tap(wpct);
-    await t.pumpAndSettle();
-    await enter(t, 'wastagePercent', '5');
-    await enter(t, 'gstRate', '3');
+    // GST defaults to 3%; wastage is no longer part of the app.
+    expect(find.byKey(const Key('wastageMethod')), findsNothing);
     await tapKey(t, 'calculate');
 
-    expect(find.text('Jewellery Cost Summary'), findsOneWidget);
+    expect(find.text('Damiyaas Jewelers'), findsOneWidget);
+    expect(find.textContaining('Jewellery Cost Estimate'), findsOneWidget);
     expect(find.byKey(const Key('total')), findsOneWidget);
     expect(
       (t.widget(find.byKey(const Key('total'))) as Text).data,
-      '₹99,395.00',
+      // gold 70,000 + diamond 15,000 + stone 1,000 + making 7,000
+      // = 93,000; GST 3% = 2,790.
+      '₹95,790.00',
     );
+    expect(find.byKey(const Key('sendWhatsApp')), findsOneWidget);
 
     await tapKey(t, 'saveHistory');
     expect(state.history.all(), hasLength(1));
-    expect(state.history.all().single.result.totalPaise, 9939500);
+    expect(state.history.all().single.result.totalPaise, 9579000);
   });
 
   testWidgets('uncertain scanned fields must be confirmed', (t) async {
@@ -135,5 +136,46 @@ void main() {
     await t.tap(find.text('Confirm').first);
     await t.pumpAndSettle();
     expect(find.text('Calculate Cost'), findsOneWidget);
+  });
+
+  testWidgets('scanned real tag: FANCY CUT stays a diamond in the estimate', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1080, 7000);
+    t.view.devicePixelRatio = 2.6;
+    addTearDown(t.view.reset);
+
+    final state = AppState(MemoryStore());
+    await state.saveRates(
+      GoldRates(
+        perGram: const {
+          Purity.k14: 4100,
+          Purity.k18: 5300,
+          Purity.k22: 6450,
+          Purity.k24: 7000,
+        },
+        updatedAt: DateTime(2026, 10, 1),
+        quotedPerGrams: 10,
+      ),
+    );
+    await t.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: buildTheme(),
+          home: DetailsFormScreen(
+            parsed: const TagParser().parse(
+              '4 G.Wt :6.410 14K :\n© N.Wt:5.886 :\n\'  DIA\\0.38\\700 |\n'
+              '| DIA\\0.11\\750\n~#NEANCY CUT) 2.13\\850 |\n',
+            ),
+          ),
+        ),
+      ),
+    );
+    await enter(t, 'makingValue', '1200');
+    await tapKey(t, 'calculate');
+    expect(find.text('Diamond value'), findsOneWidget);
+    expect(find.text('Stone value'), findsNothing);
+    expect(find.text('₹2,15,900.00'), findsOneWidget); // 26,600+8,250+1,81,050
   });
 }

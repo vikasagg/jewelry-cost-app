@@ -25,27 +25,19 @@ class RatesRepository {
       _store.put(_key, jsonEncode(rates.toJson()));
 }
 
-/// Remembers pricing inputs that are not printed on tags so staff don't
-/// retype them per item (GST rules, last ₹/ct per stone kind), and the
-/// multiplier that turns a rate code printed on tags into ₹ per carat.
+/// Defaults for a new item and the multiplier that turns a rate code
+/// printed on tags into ₹ per carat. Nothing from a previous item is carried
+/// over: every scan starts clean.
 class PricingDefaultsRepository {
   PricingDefaultsRepository(this._store);
   final KeyValueStore _store;
-  static const _key = 'pricing_defaults_v2';
   static const _multiplierKey = 'tag_rate_multiplier';
 
   /// Tag rate codes are ₹ per carat ÷ 100 (e.g. DIA\0.38\700 → ₹70,000/ct).
   static const defaultTagRateMultiplier = 100.0;
 
-  Map<String, dynamic> _raw() {
-    final raw = _store.get(_key);
-    if (raw == null) return {};
-    try {
-      return jsonDecode(raw) as Map<String, dynamic>;
-    } catch (_) {
-      return {};
-    }
-  }
+  /// GST % pre-filled on every new item (editable per item).
+  static const defaultGstPercent = 3.0;
 
   double get tagRateMultiplier =>
       double.tryParse(_store.get(_multiplierKey) ?? '') ??
@@ -60,52 +52,18 @@ class PricingDefaultsRepository {
     return n == null ? null : n * tagRateMultiplier;
   }
 
-  /// Rate to pre-fill for a stone line: from its printed tag code when it
-  /// has one, otherwise the last rate used for that kind.
-  double? rateFor(StoneKind kind, String? code) {
-    if (code != null && code.isNotEmpty) return rateFromTagCode(code);
-    return ((_raw()['lastRate'] as Map?)?[kind.name] as num?)?.toDouble();
-  }
+  /// Rate to pre-fill for a stone line: only from its printed tag code.
+  double? rateFor(StoneKind kind, String? code) => rateFromTagCode(code);
 
-  /// Defaults for a new item: remembered GST rules and, for manual entry,
-  /// one empty diamond and one empty other-stone line.
-  JewelleryInput load() {
-    final raw = _raw();
-    final gst = raw['gst'] is Map
-        ? GstConfig.fromJson((raw['gst'] as Map).cast<String, dynamic>())
-        : const GstConfig(ratePercent: null);
-    return JewelleryInput(
-      gst: gst,
-      stones: [
-        StoneLine(
-          kind: StoneKind.diamond,
-          ratePerCt: rateFor(StoneKind.diamond, null),
-        ),
-        StoneLine(
-          kind: StoneKind.stone,
-          ratePerCt: rateFor(StoneKind.stone, null),
-        ),
-      ],
-    );
-  }
-
-  Future<void> rememberFrom(JewelleryInput input) {
-    final raw = _raw();
-    final lastRate = <String, dynamic>{
-      ...?(raw['lastRate'] as Map?)?.cast<String, dynamic>(),
-    };
-    for (final line in input.stones) {
-      // Rates that came from a tag code are not "typed" defaults.
-      if (line.ratePerCt == null || !line.hasWeight || line.code != null) {
-        continue;
-      }
-      lastRate[line.kind.name] = line.ratePerCt;
-    }
-    return _store.put(
-      _key,
-      jsonEncode({'gst': input.gst.toJson(), 'lastRate': lastRate}),
-    );
-  }
+  /// A clean new item: GST 3%, making per gram (empty), and for manual
+  /// entry one empty diamond and one empty stone line.
+  JewelleryInput load() => const JewelleryInput(
+    gst: GstConfig(ratePercent: defaultGstPercent),
+    stones: [
+      StoneLine(kind: StoneKind.diamond),
+      StoneLine(kind: StoneKind.stone),
+    ],
+  );
 }
 
 /// Persists saved calculations, one key per record.
