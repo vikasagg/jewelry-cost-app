@@ -52,7 +52,16 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_result == null && _issues.isEmpty) _compute();
+    if (_result == null && _issues.isEmpty) {
+      _compute();
+      // Every new or edited estimate is saved to history automatically;
+      // records opened from history are only re-saved on request.
+      if (_result != null && widget.savedAt == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _save(auto: true);
+        });
+      }
+    }
     if (widget.savedAt != null) _dirty = false;
   }
 
@@ -62,7 +71,7 @@ class _ResultScreenState extends State<ResultScreen> {
     _issues = o.issues;
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool auto = false}) async {
     final state = AppScope.read(context);
     final rec = await state.saveCalculation(
       input: _input,
@@ -76,9 +85,16 @@ class _ResultScreenState extends State<ResultScreen> {
       _recordId = rec.id;
       _dirty = false;
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Saved to history')));
+    final tag = _input.tagNumber;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          auto
+              ? 'Saved to history${tag == null ? '' : ' as $tag'}'
+              : 'Saved to history',
+        ),
+      ),
+    );
   }
 
   void _recalculate() {
@@ -241,7 +257,7 @@ class _ResultScreenState extends State<ResultScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Cost Summary'),
-          actions: const [RatesAction()],
+          actions: const [HistoryAction(), RatesAction()],
         ),
         body: SafeArea(
           child: ResponsiveBody(

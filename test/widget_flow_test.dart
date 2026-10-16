@@ -66,7 +66,15 @@ void main() {
     expect(find.text('₹70,000.00'), findsOneWidget); // 18K per 10 g
     expect(state.rates!.rateFor(Purity.k18), 7000); // per gram internally
 
+    expect(find.byKey(const Key('historyButton')), findsOneWidget);
     await tapKey(t, 'manualEntry');
+    // New entries get the next automatic tag number.
+    expect(
+      (t.widget(find.byKey(const Key('tagNumber'))) as TextField)
+          .controller!
+          .text,
+      'DJ-0001',
+    );
     await enter(t, 'tagNumber', 'DR-18-0425');
     await tapKey(t, 'calculate');
     // Gold weight / purity / making / GST missing
@@ -103,8 +111,9 @@ void main() {
     );
     expect(find.byKey(const Key('sendWhatsApp')), findsOneWidget);
 
-    await tapKey(t, 'saveHistory');
+    // Saved to history automatically, without tapping Save.
     expect(state.history.all(), hasLength(1));
+    expect(find.text('Saved to History'), findsOneWidget);
     expect(state.history.all().single.result.totalPaise, 9579000);
   });
 

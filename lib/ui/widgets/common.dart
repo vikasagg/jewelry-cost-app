@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../screens/history_screen.dart';
 import '../screens/rate_setup_screen.dart';
 import '../theme.dart';
 
@@ -22,6 +23,21 @@ String formatInput(double? v, {int? decimals}) {
 
 final _dateFmt = DateFormat('d MMM yyyy, h:mm a');
 String formatDateTime(DateTime d) => _dateFmt.format(d);
+
+/// AppBar action that opens the saved estimates (history) from any screen.
+class HistoryAction extends StatelessWidget {
+  const HistoryAction({super.key});
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    key: const Key('historyAction'),
+    tooltip: 'History',
+    icon: const Icon(Icons.history),
+    onPressed: () => Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const HistoryScreen())),
+  );
+}
 
 /// AppBar action that opens gold rate settings from any screen.
 class RatesAction extends StatelessWidget {

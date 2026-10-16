@@ -31,29 +31,59 @@ class RatesRepository {
 class PricingDefaultsRepository {
   PricingDefaultsRepository(this._store);
   final KeyValueStore _store;
-  static const _multiplierKey = 'tag_rate_multiplier';
+  static const _counterKey = 'dj_tag_counter';
 
-  /// Tag rate codes are ₹ per carat ÷ 100 (e.g. DIA\0.38\700 → ₹70,000/ct).
-  static const defaultTagRateMultiplier = 100.0;
+  /// Tag rate code × multiplier = ₹ per carat. Diamonds and polki use ×100
+  /// (DIA\0.38\700 → ₹70,000/ct); stones use ×10 (Stn\0.25\600 → ₹6,000/ct).
+  static const defaultMultipliers = {
+    StoneKind.diamond: 100.0,
+    StoneKind.stone: 10.0,
+    StoneKind.polki: 100.0,
+  };
 
   /// GST % pre-filled on every new item (editable per item).
   static const defaultGstPercent = 3.0;
 
-  double get tagRateMultiplier =>
-      double.tryParse(_store.get(_multiplierKey) ?? '') ??
-      defaultTagRateMultiplier;
+  /// Prefix of the automatic tag number, e.g. DJ-0001.
+  static const tagPrefix = 'DJ-';
 
-  Future<void> setTagRateMultiplier(double value) =>
-      _store.put(_multiplierKey, value.toString());
+  // Diamond keeps the original key so earlier settings carry over.
+  static String _multiplierKey(StoneKind kind) => kind == StoneKind.diamond
+      ? 'tag_rate_multiplier'
+      : 'tag_rate_multiplier_${kind.name}';
+
+  double tagRateMultiplier(StoneKind kind) =>
+      double.tryParse(_store.get(_multiplierKey(kind)) ?? '') ??
+      defaultMultipliers[kind]!;
+
+  Future<void> setTagRateMultiplier(StoneKind kind, double value) =>
+      _store.put(_multiplierKey(kind), value.toString());
 
   /// ₹/ct for a rate code printed on a tag, or null if it isn't a number.
-  double? rateFromTagCode(String? code) {
+  double? rateFromTagCode(StoneKind kind, String? code) {
     final n = double.tryParse(code ?? '');
-    return n == null ? null : n * tagRateMultiplier;
+    return n == null ? null : n * tagRateMultiplier(kind);
   }
 
   /// Rate to pre-fill for a stone line: only from its printed tag code.
-  double? rateFor(StoneKind kind, String? code) => rateFromTagCode(code);
+  double? rateFor(StoneKind kind, String? code) => rateFromTagCode(kind, code);
+
+  int get _lastTagNumber => int.tryParse(_store.get(_counterKey) ?? '') ?? 0;
+
+  /// Next automatic tag number, e.g. "DJ-0001".
+  String get nextTagNumber =>
+      '$tagPrefix${(_lastTagNumber + 1).toString().padLeft(4, '0')}';
+
+  /// Moves the counter past [tagNumber] if it is an automatic DJ- number.
+  Future<void> recordTagNumber(String? tagNumber) async {
+    final m = RegExp(
+      r'^DJ-(\d+)$',
+      caseSensitive: false,
+    ).firstMatch(tagNumber?.trim() ?? '');
+    if (m == null) return;
+    final n = int.parse(m.group(1)!);
+    if (n > _lastTagNumber) await _store.put(_counterKey, '$n');
+  }
 
   /// A clean new item: GST 3%, making per gram (empty), and for manual
   /// entry one empty diamond and one empty stone line.

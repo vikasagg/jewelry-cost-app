@@ -211,7 +211,7 @@ class _ScanScreenState extends State<ScanScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Scan Jewellery Tag'),
-        actions: const [RatesAction()],
+        actions: const [HistoryAction(), RatesAction()],
       ),
       body: SafeArea(
         child: ResponsiveBody(

@@ -25,7 +25,7 @@ class DashboardScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const BrandHeader(size: 34),
-        actions: const [RatesAction()],
+        actions: const [HistoryAction(), RatesAction()],
       ),
       body: SafeArea(
         child: ResponsiveBody(
@@ -76,6 +76,14 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 10),
+              // History, right under the main action.
+              OutlinedButton.icon(
+                key: const Key('historyButton'),
+                onPressed: () => _open(context, const HistoryScreen()),
+                icon: const Icon(Icons.history),
+                label: Text('History  ($historyCount saved)'),
+              ),
               const SizedBox(height: 12),
               TileGrid(
                 minTileWidth: 200,
@@ -91,13 +99,6 @@ class DashboardScreen extends StatelessWidget {
                     title: 'Gold Rate Settings',
                     onTap: () =>
                         _open(context, const RateSetupScreen(firstRun: false)),
-                  ),
-                  _ActionTile(
-                    key: const Key('openHistory'),
-                    icon: Icons.history,
-                    title: 'Scan History',
-                    subtitle: '$historyCount saved',
-                    onTap: () => _open(context, const HistoryScreen()),
                   ),
                 ],
               ),
@@ -140,12 +141,10 @@ class _ActionTile extends StatelessWidget {
     super.key,
     required this.icon,
     required this.title,
-    this.subtitle,
     required this.onTap,
   });
   final IconData icon;
   final String title;
-  final String? subtitle;
   final VoidCallback onTap;
 
   @override
@@ -177,11 +176,6 @@ class _ActionTile extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      style: const TextStyle(color: AppColors.muted),
-                    ),
                 ],
               ),
             ),

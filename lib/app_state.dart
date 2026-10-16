@@ -43,12 +43,15 @@ class AppState extends ChangeNotifier {
       _defaults.rateFor(kind, code);
 
   /// Multiplier from the rate code printed on tags to ₹ per carat.
-  double get tagRateMultiplier => _defaults.tagRateMultiplier;
+  double tagRateMultiplier(StoneKind kind) => _defaults.tagRateMultiplier(kind);
 
-  Future<void> setTagRateMultiplier(double value) async {
-    await _defaults.setTagRateMultiplier(value);
+  Future<void> setTagRateMultiplier(StoneKind kind, double value) async {
+    await _defaults.setTagRateMultiplier(kind, value);
     notifyListeners();
   }
+
+  /// Next automatic tag number for a new scan/entry, e.g. "DJ-0001".
+  String get nextTagNumber => _defaults.nextTagNumber;
 
   /// Saves (or updates, when [existingId] is given) a calculation.
   Future<CalculationRecord> saveCalculation({
@@ -77,6 +80,7 @@ class AppState extends ChangeNotifier {
             source: source,
           );
     await history.save(record);
+    await _defaults.recordTagNumber(input.tagNumber);
     notifyListeners();
     return record;
   }
