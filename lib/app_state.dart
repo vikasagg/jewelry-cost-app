@@ -3,12 +3,14 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 
+import 'billing/bill.dart';
 import 'data/key_value_store.dart';
 import 'data/repositories.dart';
 import 'models/calculation_record.dart';
 import 'models/gold_rates.dart';
 import 'models/jewellery_input.dart';
 import 'pricing/pricing_engine.dart';
+import 'stock/stock_book.dart';
 
 /// App-wide state: current gold rates, pricing defaults and history.
 class AppState extends ChangeNotifier {
@@ -16,6 +18,7 @@ class AppState extends ChangeNotifier {
     : _rates = RatesRepository(store),
       _defaults = PricingDefaultsRepository(store),
       history = HistoryRepository(store),
+      stock = StockBook(store, clock: clock),
       _clock = clock ?? DateTime.now {
     _current = _rates.load();
   }
@@ -23,6 +26,9 @@ class AppState extends ChangeNotifier {
   final RatesRepository _rates;
   final PricingDefaultsRepository _defaults;
   final HistoryRepository history;
+
+  /// Daily physical stock counts — separate from pricing and its history.
+  final StockBook stock;
   final DateTime Function() _clock;
   final engine = const PricingEngine();
 
@@ -88,6 +94,45 @@ class AppState extends ChangeNotifier {
     await _defaults.recordTagNumber(input.tagNumber);
     notifyListeners();
     return record;
+  }
+
+  /// The newest bill that includes a saved calculation, if any.
+  Bill? billFor(String recordId) => history.billFor(recordId);
+
+  /// Creates a bill for the chosen products, or updates [existing]
+  /// (keeping its number and date). Products are copied into the bill.
+  Future<Bill> saveBill({
+    Bill? existing,
+    required List<CalculationRecord> items,
+    required String customerName,
+    required String phone,
+    required String address,
+    required PaymentMode payment,
+  }) async {
+    final products = [
+      for (final r in items)
+        BillItem(recordId: r.id, input: r.input, result: r.result),
+    ];
+    final bill =
+        existing?.copyWith(
+          customerName: customerName,
+          phone: phone,
+          address: address,
+          payment: payment,
+          items: products,
+        ) ??
+        Bill(
+          billNo: await history.takeBillNumber(),
+          customerName: customerName,
+          phone: phone,
+          address: address,
+          payment: payment,
+          createdAt: _clock(),
+          items: products,
+        );
+    await history.saveBill(bill);
+    notifyListeners();
+    return bill;
   }
 
   /// Thumbnail of the scanned tag saved with a calculation.

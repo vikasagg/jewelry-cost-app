@@ -44,6 +44,10 @@ dependencies:
   share_plus: ^13.3.1
   web: ^1.1.1
   uuid: ^4.6.0
+  pdf: ^3.13.1
+  url_launcher: ^6.3.3
+  crypto: ^3.0.7
+  printing: ^5.15.1
 
 dev_dependencies:
   flutter_test:
@@ -66,6 +70,28 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Inter (text) and Playfair Display (brand title), SIL Open Font
+  # License — see assets/fonts/OFL-*.txt. Bundled so the app looks the
+  # same offline.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter_400Regular.ttf
+        - asset: assets/fonts/Inter_500Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter_600SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter_700Bold.ttf
+          weight: 700
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay_500Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlayfairDisplay_600SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlayfairDisplay_700Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

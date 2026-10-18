@@ -477,4 +477,45 @@ void main() {
       });
     }
   });
+
+  group('labour (LBR) and a second photo', () {
+    test('LBR is read as labour / making charges', () {
+      for (final e in {
+        'LBR : 1200': (MakingMethod.perGram, 1200.0),
+        'LBR\\1500': (MakingMethod.perGram, 1500.0),
+        'L.B.R. 12%': (MakingMethod.percentOfGold, 12.0),
+        'LBR 15000/-': (MakingMethod.fixed, 15000.0),
+      }.entries) {
+        final t = parser.parse(e.key);
+        expect(
+          (t.makingMethod.value, t.makingValue.value),
+          e.value,
+          reason: e.key,
+        );
+      }
+    });
+
+    test('real labour-side tag: "Lbr.16.00%" and item code CH1619', () {
+      final t = parser.parse('DJ\nCH1619\nCHAIN\nLbr.16.00%');
+      expect(t.makingMethod.value, MakingMethod.percentOfGold);
+      expect(t.makingValue.value, 16);
+      expect(t.tagNumber.value, 'CH1619');
+      expect(parser.parse('LBR 11.5%').makingValue.value, 11.5);
+    });
+
+    test('second photo fills only what the first one lacks', () {
+      final front = parser
+          .parse('G.Wt:6.410 14K\nN.Wt:5.886\nDIA\\0.38\\700')
+          .confirm('goldWeight', 5.9);
+      final back = parser.parse('Tag No: R-77\nLBR : 1200\nN.Wt 9.999');
+      final m = front.mergeWith(back);
+      expect(m.goldWeight.value, 5.9); // first photo (as confirmed) wins
+      expect(m.purity.value, Purity.k14);
+      expect(m.stones, hasLength(1));
+      expect(m.makingValue.value, 1200);
+      expect(m.makingMethod.value, MakingMethod.perGram);
+      expect(m.tagNumber.value, 'R-77');
+      expect(m.rawText, contains('2nd photo'));
+    });
+  });
 }

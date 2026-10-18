@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../app_state.dart';
 import '../../core/money.dart';
@@ -165,95 +166,111 @@ class _RecordCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = record.result;
     final i = record.input;
-    final parts = [
-      '${r.purity.label} · ${i.goldWeight!.toStringAsFixed(3)} g',
-      if (i.diamondWeight > 0) 'D ${i.diamondWeight.toStringAsFixed(2)} ct',
-      if (i.stoneWeight > 0) 'S ${formatPercent(i.stoneWeight)} pcs',
+    final details = [
+      '${i.goldWeight!.toStringAsFixed(3)} g',
+      if (i.diamondWeight > 0) '${i.diamondWeight.toStringAsFixed(2)} ct',
+      if (i.stoneWeight > 0) '${formatPercent(i.stoneWeight)} pcs',
       if (i.polkiWeight > 0) 'Polki ${i.polkiWeight.toStringAsFixed(2)} ct',
     ];
+    const muted = TextStyle(color: AppColors.muted, fontSize: 13);
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onOpen,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.fromLTRB(10, 10, 0, 10),
+          child: Row(
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (photo != null) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.memory(
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: photo == null
+                    ? Container(
+                        width: 60,
+                        height: 60,
+                        color: AppColors.goldSoft,
+                        child: const Icon(
+                          Icons.diamond_outlined,
+                          color: AppColors.gold,
+                        ),
+                      )
+                    : Image.memory(
                         photo!,
                         key: Key('historyPhoto_${record.id}'),
-                        width: 56,
-                        height: 56,
+                        width: 60,
+                        height: 60,
                         fit: BoxFit.cover,
-                        cacheWidth: 168, // decode at thumbnail size
+                        cacheWidth: 180, // decode at thumbnail size
                         gaplessPlayback: true,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          i.displayName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        Expanded(
+                          child: Text(
+                            i.displayName,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 2),
                         Text(
-                          formatDateTime(record.createdAt),
+                          formatPaise(r.totalPaise),
                           style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 13,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Text(
-                    formatPaise(r.totalPaise),
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.goldDeep,
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${r.purity.label} Gold',
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Text(
+                          DateFormat('d MMM yyyy').format(record.createdAt),
+                          style: muted,
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(parts.join('  ·  ')),
-              const SizedBox(height: 2),
-              Text(
-                'Gold rate ${formatInr(record.goldRateUsed)}/g · '
-                'Making ${formatPaise(r.makingPaise)} · '
-                'GST ${r.gstLines.map((l) => '${formatPercent(l.ratePercent)}%').join('+')}',
-                style: const TextStyle(color: AppColors.muted, fontSize: 13),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit'),
-                  ),
-                  TextButton.icon(
-                    onPressed: onDelete,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.error,
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(details.join(' | '), style: muted),
+                        ),
+                        Text(
+                          DateFormat('h:mm a').format(record.createdAt),
+                          style: muted,
+                        ),
+                      ],
                     ),
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Delete'),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                key: Key('historyMenu_${record.id}'),
+                icon: const Icon(Icons.more_vert, color: AppColors.muted),
+                onSelected: (v) => v == 'edit' ? onEdit() : onDelete(),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text(
+                      'Delete',
+                      style: TextStyle(color: AppColors.error),
+                    ),
                   ),
                 ],
               ),

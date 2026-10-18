@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../app_state.dart';
 import '../../branding.dart';
 import '../../core/money.dart';
+import '../../models/gold_rates.dart';
 import '../../models/purity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'bill_screen.dart';
 import 'details_form_screen.dart';
 import 'history_screen.dart';
 import 'rate_setup_screen.dart';
@@ -24,7 +26,7 @@ class DashboardScreen extends StatelessWidget {
     final historyCount = state.history.all().length;
     return Scaffold(
       appBar: AppBar(
-        title: const BrandHeader(size: 34),
+        title: const BrandLogo(size: 20),
         actions: const [HistoryAction(), RatesAction()],
       ),
       body: SafeArea(
@@ -32,102 +34,86 @@ class DashboardScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
-              // Primary action
-              Material(
-                color: AppColors.gold,
-                borderRadius: BorderRadius.circular(20),
-                child: InkWell(
-                  key: const Key('scanTag'),
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => _open(context, const ScanScreen()),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.document_scanner_outlined,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Scan Jewellery Tag',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Capture a tag and read weights & purity',
-                                style: TextStyle(color: Color(0xFFF7EEDB)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.chevron_right, color: Colors.white),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // History, right under the main action.
-              OutlinedButton.icon(
-                key: const Key('historyButton'),
-                onPressed: () => _open(context, const HistoryScreen()),
-                icon: const Icon(Icons.history),
-                label: Text('History  ($historyCount saved)'),
-              ),
-              const SizedBox(height: 12),
-              TileGrid(
-                minTileWidth: 200,
-                children: [
-                  _ActionTile(
-                    key: const Key('manualEntry'),
-                    icon: Icons.edit_note,
-                    title: 'Manual Jewellery Entry',
-                    onTap: () => _open(context, const DetailsFormScreen()),
-                  ),
-                  _ActionTile(
-                    icon: Icons.currency_rupee,
-                    title: 'Gold Rate Settings',
-                    onTap: () =>
-                        _open(context, const RateSetupScreen(firstRun: false)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              SectionTitle(
-                'Current gold rates',
-                trailing: TextButton(
-                  onPressed: () =>
+              if (rates != null)
+                _RatesCard(
+                  rates: rates,
+                  onEdit: () =>
                       _open(context, const RateSetupScreen(firstRun: false)),
-                  child: const Text('Update'),
                 ),
-              ),
-              if (rates != null) ...[
-                TileGrid(
-                  minTileWidth: 140,
+              const SizedBox(height: 14),
+              // Primary action
+              GoldCard(
+                key: const Key('scanTag'),
+                onTap: () => _open(context, const ScanScreen()),
+                child: Row(
                   children: [
-                    for (final p in Purity.values.reversed)
-                      StatTile(
-                        label: '${p.label} per ${rates.quoteUnit}',
-                        value: formatInr(rates.quotedRateFor(p) ?? 0),
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
                       ),
+                      child: const Icon(Icons.photo_camera_outlined, size: 28),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Scan Jewellery Tag',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Use camera to read tag details',
+                            style: TextStyle(color: Color(0xFFF7EEDB)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Last updated ${formatDateTime(rates.updatedAt)}',
-                  style: const TextStyle(color: AppColors.muted),
-                ),
-              ],
+              ),
+              const SizedBox(height: 12),
+              MenuTile(
+                key: const Key('manualEntry'),
+                icon: Icons.edit_outlined,
+                title: 'Manual Jewellery Entry',
+                subtitle: 'Enter details manually',
+                onTap: () => _open(context, const DetailsFormScreen()),
+              ),
+              const SizedBox(height: 10),
+              MenuTile(
+                icon: Icons.bar_chart_rounded,
+                title: 'Gold Rate Settings',
+                subtitle: 'Update current gold rates',
+                onTap: () =>
+                    _open(context, const RateSetupScreen(firstRun: false)),
+              ),
+              const SizedBox(height: 10),
+              MenuTile(
+                key: const Key('historyButton'),
+                icon: Icons.history,
+                title: 'Scan History',
+                subtitle:
+                    'View and manage past calculations '
+                    '($historyCount saved)',
+                onTap: () => _open(context, const HistoryScreen()),
+              ),
+              const SizedBox(height: 10),
+              MenuTile(
+                key: const Key('newBill'),
+                icon: Icons.receipt_long_outlined,
+                title: 'New Bill',
+                subtitle: 'Pick scanned products and bill the customer',
+                onTap: () => startBill(context),
+              ),
             ],
           ),
         ),
@@ -136,51 +122,101 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
+/// "Current Gold Rates" card: every purity with its rate.
+class _RatesCard extends StatelessWidget {
+  const _RatesCard({required this.rates, required this.onEdit});
+  final GoldRates rates;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) => Card(
-    child: InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.goldSoft,
-                borderRadius: BorderRadius.circular(12),
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      const TextSpan(
+                        text: 'Current Gold Rates ',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextSpan(
+                        text: '(per ${rates.quoteUnit})',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: Icon(icon, color: AppColors.goldDeep),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+              TextButton(onPressed: onEdit, child: const Text('Edit')),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // One row of purities with dividers, as in the design.
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                for (final (n, p) in Purity.values.reversed.indexed) ...[
+                  if (n > 0)
+                    const VerticalDivider(width: 1, color: AppColors.line),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          p.label,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.goldDeep,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: FittedBox(
+                            child: Text(
+                              formatInr(
+                                rates.quotedRateFor(p) ?? 0,
+                              ).replaceAll('.00', ''),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const Divider(height: 18),
+          Row(
+            children: [
+              const Icon(Icons.schedule, size: 16, color: AppColors.muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Last updated: ${formatDateTime(rates.updatedAt)}',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     ),
   );

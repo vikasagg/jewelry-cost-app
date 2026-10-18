@@ -16,6 +16,7 @@ import '../summary_text.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/price_icons.dart';
+import 'bill_screen.dart';
 import 'details_form_screen.dart';
 import 'scan_screen.dart';
 
@@ -220,6 +221,14 @@ class _ResultScreenState extends State<ResultScreen> {
       ],
     ),
   );
+
+  /// Saves this estimate if needed, then builds a bill with it ticked
+  /// (more saved products can be added).
+  Future<void> _generateBill() async {
+    if (_recordId == null || _dirty) await _save(auto: true);
+    if (!mounted || _recordId == null) return;
+    await startBill(context, preselectId: _recordId);
+  }
 
   void _recalculate() {
     final current = AppScope.read(context).rates;
@@ -469,50 +478,47 @@ class _ResultScreenState extends State<ResultScreen> {
                   const SizedBox(height: 12),
 
                   // Jewellery details
-                  TileGrid(
-                    children: [
-                      if ((i.tagNumber ?? '').trim().isNotEmpty)
-                        StatTile(
-                          icon: PriceIcons.tag,
-                          label: 'Tag No.',
-                          value: i.tagNumber!,
-                        ),
-                      StatTile(
-                        icon: PriceIcons.purity,
-                        label: 'Gold Purity',
-                        value: r.purity.label,
-                      ),
-                      StatTile(
-                        icon: PriceIcons.weight,
-                        label: 'Gold Weight',
-                        value: '${i.goldWeight!.toStringAsFixed(3)} g',
-                      ),
-                      if (i.diamondWeight > 0)
-                        StatTile(
-                          icon: PriceIcons.diamond,
-                          label: 'Diamond Weight',
-                          value: '${i.diamondWeight.toStringAsFixed(2)} ct',
-                        ),
-                      if (i.stoneWeight > 0)
-                        StatTile(
-                          icon: PriceIcons.stone,
-                          label: 'Stones',
-                          value: '${formatPercent(i.stoneWeight)} pcs',
-                        ),
-                      if (i.polkiWeight > 0)
-                        StatTile(
-                          icon: PriceIcons.polki,
-                          label: 'Polki Weight',
-                          value: '${i.polkiWeight.toStringAsFixed(2)} ct',
-                        ),
-                      if (i.grossWeight != null)
-                        StatTile(
-                          icon: PriceIcons.grossWeight,
-                          label: 'Gross Weight',
-                          value: '${i.grossWeight!.toStringAsFixed(3)} g',
-                        ),
-                    ],
+                  const SectionTitle('Jewellery Details'),
+                  if ((i.tagNumber ?? '').trim().isNotEmpty)
+                    InfoRow(
+                      icon: PriceIcons.tag,
+                      label: 'Tag No.',
+                      value: i.tagNumber!,
+                    ),
+                  InfoRow(
+                    icon: PriceIcons.purity,
+                    label: 'Gold Purity',
+                    value: r.purity.label,
                   ),
+                  InfoRow(
+                    icon: PriceIcons.weight,
+                    label: 'Gold Weight',
+                    value: '${i.goldWeight!.toStringAsFixed(3)} g',
+                  ),
+                  if (i.diamondWeight > 0)
+                    InfoRow(
+                      icon: PriceIcons.diamond,
+                      label: 'Diamond Weight',
+                      value: '${i.diamondWeight.toStringAsFixed(2)} ct',
+                    ),
+                  if (i.stoneWeight > 0)
+                    InfoRow(
+                      icon: PriceIcons.stone,
+                      label: 'Stones',
+                      value: '${formatPercent(i.stoneWeight)} pcs',
+                    ),
+                  if (i.polkiWeight > 0)
+                    InfoRow(
+                      icon: PriceIcons.polki,
+                      label: 'Polki Weight',
+                      value: '${i.polkiWeight.toStringAsFixed(2)} ct',
+                    ),
+                  if (i.grossWeight != null)
+                    InfoRow(
+                      icon: PriceIcons.grossWeight,
+                      label: 'Gross Weight',
+                      value: '${i.grossWeight!.toStringAsFixed(3)} g',
+                    ),
                   const Divider(),
 
                   // Price breakdown
@@ -609,23 +615,51 @@ class _ResultScreenState extends State<ResultScreen> {
                       label: 'GST',
                       value: '₹0.00',
                     ),
-                  const Divider(),
-                  const Text(
-                    'Total estimated jewellery cost',
-                    style: TextStyle(color: AppColors.muted),
-                  ),
-                  const SizedBox(height: 6),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      formatPaise(r.totalPaise),
-                      key: const Key('total'),
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.goldDeep,
-                      ),
+                  const SizedBox(height: 10),
+                  // Total, highlighted as in the design.
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.goldSoft,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.line),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.monetization_on_outlined,
+                          size: 40,
+                          color: AppColors.gold,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Total Estimated Cost',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  formatPaise(r.totalPaise),
+                                  key: const Key('total'),
+                                  style: const TextStyle(
+                                    fontSize: 34,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.goldDeep,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -643,6 +677,23 @@ class _ResultScreenState extends State<ResultScreen> {
           _RatesUsedCard(rates: _rates, highlight: r.purity, current: current),
         ],
         const SizedBox(height: 10),
+        Builder(
+          builder: (context) {
+            final bill = _recordId == null
+                ? null
+                : AppScope.of(context).billFor(_recordId!);
+            return FilledButton.icon(
+              key: const Key('generateBill'),
+              onPressed: () =>
+                  bill == null ? _generateBill() : showBill(context, bill),
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: Text(
+                bill == null ? 'Generate Bill' : 'View Bill ${bill.billNo}',
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
         FilledButton.icon(
           key: const Key('sendWhatsApp'),
           style: FilledButton.styleFrom(

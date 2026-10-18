@@ -69,7 +69,7 @@ void main() {
 
     await t.tap(find.byKey(const Key('confirm_goldWeight')));
     await t.pumpAndSettle();
-    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Continue to Calculate'), findsOneWidget);
     expect(find.byKey(const Key('confirmHint')), findsNothing);
 
     await continueToForm(t);
@@ -82,7 +82,7 @@ void main() {
     expect(find.text('Confirm 4 values to continue'), findsOneWidget);
     await t.tap(find.byKey(const Key('confirmAll')));
     await t.pumpAndSettle();
-    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Continue to Calculate'), findsOneWidget);
     await continueToForm(t);
     expect(fieldText(t, 'goldWeight'), '5.886');
     expect(fieldText(t, 'grossWeight'), '6.41');
@@ -91,15 +91,13 @@ void main() {
 
   testWidgets('a missing gold weight is entered on the scan page', (t) async {
     await open(t, 'Purity: 18K\nTag No: R-1');
-    expect(find.text('Not found — enter it'), findsOneWidget);
+    expect(find.text('Not found on the tag — enter it'), findsOneWidget);
     expect(continueButton(t).onPressed, isNull);
 
-    await t.tap(find.byKey(const Key('edit_goldWeight')));
-    await t.pumpAndSettle();
-    await t.enterText(find.byKey(const Key('editValue')), '4.25');
-    await t.tap(find.byKey(const Key('editSave')));
-    await t.pumpAndSettle();
-    expect(find.text('4.250 g'), findsOneWidget);
+    // Typed straight into the field on the scan page.
+    await t.enterText(find.byKey(const Key('field_goldWeight')), '4.25');
+    await t.pump();
+    expect(continueButton(t).onPressed, isNotNull);
 
     await continueToForm(t);
     expect(fieldText(t, 'goldWeight'), '4.25');
@@ -117,7 +115,7 @@ void main() {
     await t.tap(find.byKey(const Key('editSave')));
     await t.pumpAndSettle();
     expect(find.text('Confirm 1 value to continue'), findsOneWidget);
-    expect(find.textContaining('(polki)'), findsOneWidget);
+    expect(find.textContaining('Polki'), findsWidgets);
 
     await t.tap(find.byKey(const Key('confirm_stone.1')));
     await t.pumpAndSettle();
@@ -140,6 +138,38 @@ void main() {
 
     await state.deleteCalculation(saved.id);
     expect(state.imageFor(saved.id), isNull);
+  });
+
+  testWidgets('second photo adds the labour; Remove takes it back out', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1080, 7000);
+    t.view.devicePixelRatio = 2.6;
+    addTearDown(t.view.reset);
+    final state = AppState(MemoryStore());
+    await t.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: buildTheme(),
+          home: ScanScreen(
+            initialImage: pixel,
+            initialResult: const TagParser().parse('N.Wt 4.000 g 18K'),
+            initialSecondImage: pixel,
+            initialSecondResult: const TagParser().parse('LBR : 1200'),
+          ),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('secondPhoto')), findsOneWidget);
+    expect(fieldText(t, 'field_makingValue'), '1200');
+
+    await t.tap(find.byKey(const Key('removeSecondPhoto')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('secondPhoto')), findsNothing);
+    expect(find.byKey(const Key('field_makingValue')), findsNothing);
+    expect(find.byKey(const Key('addSecondPhoto')), findsOneWidget);
   });
 
   test('confirm() re-checks the weight balance with corrected values', () {

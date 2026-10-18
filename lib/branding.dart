@@ -41,8 +41,8 @@ class BrandMark extends StatelessWidget {
   );
 }
 
-/// Monogram + shop name (+ optional subtitle), used on the dashboard and on
-/// the cost estimate shared to customers.
+/// Monogram + shop name (+ optional subtitle), used on the cost estimate
+/// shared to customers and as a page header.
 class BrandHeader extends StatelessWidget {
   const BrandHeader({super.key, this.subtitle = Brand.tagline, this.size = 40});
   final String subtitle;
@@ -60,10 +60,10 @@ class BrandHeader extends StatelessWidget {
             Text(
               Brand.name,
               style: TextStyle(
-                fontSize: size * 0.55,
-                fontWeight: FontWeight.w700,
+                fontFamily: serifFont,
+                fontSize: size * 0.6,
+                fontWeight: FontWeight.w600,
                 color: AppColors.goldDeep,
-                letterSpacing: 0.4,
               ),
             ),
             Text(
@@ -75,4 +75,49 @@ class BrandHeader extends StatelessWidget {
       ),
     ],
   );
+}
+
+/// Gold diamond outline over the serif shop name, as on the splash and
+/// dashboard mock-ups.
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({super.key, this.size = 22, this.stacked = false});
+
+  /// Font size of the name.
+  final double size;
+
+  /// Diamond above the name (splash) instead of beside it (app bar).
+  final bool stacked;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      Icons.diamond_outlined,
+      color: AppColors.gold,
+      size: stacked ? size * 2.6 : size * 1.4,
+    );
+    final name = Text(
+      Brand.name,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontFamily: serifFont,
+        fontSize: size,
+        fontWeight: FontWeight.w600,
+        color: AppColors.ink,
+        height: 1.1,
+      ),
+    );
+    return stacked
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [icon, const SizedBox(height: 10), name],
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              icon,
+              const SizedBox(width: 8),
+              Flexible(child: name),
+            ],
+          );
+  }
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../billing/bill.dart';
 import '../models/calculation_record.dart';
 import '../models/gold_rates.dart';
 import '../models/jewellery_input.dart';
@@ -169,6 +170,44 @@ class HistoryRepository {
   Future<void> delete(String id) async {
     await _store.delete('$_prefix$id');
     await _store.delete('$_imagePrefix$id');
+  }
+
+  // Bills are stored by bill number; each holds its products.
+  static const _billPrefix = 'billdoc_';
+  static const _billCounterKey = 'bill_counter';
+
+  /// All bills, newest first.
+  List<Bill> bills() {
+    final out = <Bill>[];
+    for (final k in _store.keys.where((k) => k.startsWith(_billPrefix))) {
+      try {
+        out.add(
+          Bill.fromJson(jsonDecode(_store.get(k)!) as Map<String, dynamic>),
+        );
+      } catch (_) {
+        // Skip corrupt entries.
+      }
+    }
+    out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return out;
+  }
+
+  /// The newest bill that includes the saved calculation [id], if any.
+  Bill? billFor(String id) {
+    for (final b in bills()) {
+      if (b.items.any((i) => i.recordId == id)) return b;
+    }
+    return null;
+  }
+
+  Future<void> saveBill(Bill bill) =>
+      _store.put('$_billPrefix${bill.billNo}', jsonEncode(bill.toJson()));
+
+  /// Takes the next bill number, e.g. "DJB-0001".
+  Future<String> takeBillNumber() async {
+    final n = (int.tryParse(_store.get(_billCounterKey) ?? '') ?? 0) + 1;
+    await _store.put(_billCounterKey, '$n');
+    return 'DJB-${n.toString().padLeft(4, '0')}';
   }
 
   /// JPEG thumbnail of the scanned tag, if one was saved.

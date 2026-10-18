@@ -387,3 +387,158 @@ class BreakdownRow extends StatelessWidget {
     );
   }
 }
+
+/// Gold icon on a soft gold rounded square (mock-up style).
+class IconSquare extends StatelessWidget {
+  const IconSquare({super.key, required this.icon, this.size = 36});
+  final Widget icon;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: AppColors.goldSoft,
+      borderRadius: BorderRadius.circular(size * 0.28),
+    ),
+    child: IconTheme(
+      data: IconThemeData(color: AppColors.gold, size: size * 0.55),
+      child: icon,
+    ),
+  );
+}
+
+/// Gold-gradient card for the primary action or a total.
+class GoldCard extends StatelessWidget {
+  const GoldCard({super.key, required this.child, this.onTap, this.padding});
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: AppColors.goldGradient,
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.goldDeep.withValues(alpha: 0.25),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: padding ?? const EdgeInsets.all(16),
+          child: DefaultTextStyle.merge(
+            style: const TextStyle(color: Colors.white),
+            child: IconTheme(
+              data: const IconThemeData(color: Colors.white),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Menu row: icon square, title, subtitle and a chevron.
+class MenuTile extends StatelessWidget {
+  const MenuTile({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    // Soft beige tile with a light shadow, as in the design.
+    color: const Color(0xFFF8F0E1),
+    elevation: 1.5,
+    shadowColor: AppColors.goldDeep.withValues(alpha: 0.25),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: [
+            IconSquare(icon: Icon(icon), size: 42),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.muted),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Label/value line with a small leading icon (details lists).
+class InfoRow extends StatelessWidget {
+  const InfoRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueKey,
+  });
+  final Widget icon;
+  final String label;
+  final String value;
+  final Key? valueKey;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        SizedBox(width: 22, child: icon),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(label, style: const TextStyle(color: AppColors.muted)),
+        ),
+        Text(
+          value,
+          key: valueKey,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ],
+    ),
+  );
+}

@@ -4,8 +4,7 @@ import 'app_state.dart';
 import 'branding.dart';
 import 'data/key_value_store.dart';
 import 'data/secure_hive_store.dart';
-import 'ui/screens/dashboard_screen.dart';
-import 'ui/screens/rate_setup_screen.dart';
+import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
@@ -43,9 +42,8 @@ class JewelleryCostApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: state.hasRates
-          ? const DashboardScreen()
-          : const RateSetupScreen(firstRun: true),
+      // Choose Price Calculator or Stock Reconciliation first.
+      home: const HomeScreen(),
     ),
   );
 }

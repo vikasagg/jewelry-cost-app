@@ -46,6 +46,9 @@ void main() {
 
     final state = AppState(MemoryStore());
     await t.pumpWidget(JewelleryCostApp(state: state));
+    // First screen: choose the price calculator (or stock reconciliation).
+    expect(find.byKey(const Key('openStock')), findsOneWidget);
+    await tapKey(t, 'openPriceCalculator');
     expect(find.text('Today\'s gold rates'), findsOneWidget);
 
     // Validation: empty + negative
@@ -64,7 +67,7 @@ void main() {
     await tapKey(t, 'saveRates');
 
     expect(find.text('Scan Jewellery Tag'), findsOneWidget);
-    expect(find.text('₹70,000.00'), findsOneWidget); // 18K per 10 g
+    expect(find.text('₹70,000'), findsOneWidget); // 18K per 10 g
     expect(state.rates!.rateFor(Purity.k18), closeTo(7000, 0.001));
     expect(state.rates!.rateFor(Purity.k22), closeTo(8473.68, 0.01));
     expect(state.rates!.rateFor(Purity.k20), closeTo(7736.84, 0.01));

@@ -76,6 +76,29 @@ class ParsedTag {
   /// Percentage or grams, depending on [wastageMethod].
   final ParsedField<double> wastageValue;
 
+  /// Combines a second photo of the same tag (e.g. the side with LBR
+  /// labour): anything this reading lacks is taken from [other]; what both
+  /// have keeps this reading (and its confirmations).
+  ParsedTag mergeWith(ParsedTag other) {
+    ParsedField<T> pick<T>(ParsedField<T> a, ParsedField<T> b) =>
+        a.isFound ? a : b;
+    final useOtherMaking = !makingValue.isFound && other.makingValue.isFound;
+    return ParsedTag(
+      rawText: '$rawText\n\n--- 2nd photo ---\n${other.rawText}',
+      itemName: pick(itemName, other.itemName),
+      tagNumber: pick(tagNumber, other.tagNumber),
+      purity: pick(purity, other.purity),
+      goldWeight: pick(goldWeight, other.goldWeight),
+      grossWeight: pick(grossWeight, other.grossWeight),
+      stones: stones.isNotEmpty ? stones : other.stones,
+      weightBalance: stones.isNotEmpty ? weightBalance : other.weightBalance,
+      makingMethod: useOtherMaking ? other.makingMethod : makingMethod,
+      makingValue: useOtherMaking ? other.makingValue : makingValue,
+      wastageMethod: wastageMethod,
+      wastageValue: wastageValue,
+    );
+  }
+
   /// A copy with one value confirmed by staff, optionally corrected.
   /// [key] is a form field key: 'tagNumber', 'purity', 'goldWeight',
   /// 'grossWeight', 'makingValue' or 'stone.<i>' (weight and type of one
@@ -339,7 +362,8 @@ class TagParser {
   static const _stoneLabel =
       r'STN\.?(?:\s*M\b\.?)?|OTHER\s+STONES?(?:\s*W(?:EIGH)?T\.?)?|(?:COLOU?R(?:ED)?\s+)?STONES?(?:\s*W(?:EIGH)?T\.?)?|ST\.?\s*WT\.?|S\s?\.?\s?W\s?\.?\s?(?:T\b\.?)?|C\.?S\.?\s*WT\.?|CZ|PEARLS?|RUBY|EMERALD|SAPPHIRE|KUNDAN|GEMS?(?:TONES?)?';
   static const _makingLabel =
-      r'(?:MAKING\s*CHARGES?|MAKING|LABOU?R\s*CHARGES?|LABOU?R|M\s?\.?\s?C\s?\.?)';
+      r'(?:MAKING\s*CHARGES?|MAKING|LABOU?R\s*CHARGES?|LABOU?R|'
+      r'L\s?\.?\s?B\s?\.?\s?R\s?\.?|M\s?\.?\s?C\s?\.?)';
   static const _wastageLabel =
       r'(?:WASTAGE|WSTG\.?|V\.?\s?A\.?|VALUE\s+ADD(?:ITION)?)';
 
@@ -787,7 +811,8 @@ class TagParser {
     List<List<int>> consumed,
   ) {
     final re = RegExp(
-      '(?<![A-Z0-9])$_makingLabel$_sep'
+      // "LBR\1200" style tags separate label and value with a slash too.
+      '(?<![A-Z0-9])$_makingLabel(?:$_sep|[\\\\/])*'
       r'(?:RS\.?|INR|₹)?\s*'
       r'([0-9OoIl][0-9OoIl,]*(?:\.[0-9OoIl]+)?)\s*'
       r'(%|/\s*-|/\s*G(?:M|RAM)?S?\b|PER\s*G(?:M|RAM)?S?\b)?',
@@ -896,7 +921,20 @@ class TagParser {
       caseSensitive: false,
     );
     final m = re.firstMatch(text);
-    if (m == null) return const ParsedField.missing();
+    if (m == null) {
+      // Unlabelled item code on a line of its own, e.g. "CH1619".
+      final code = RegExp(
+        r'^[ \t]*([A-Z]{1,4}[0-9]{3,7})[ \t]*$',
+        multiLine: true,
+      ).firstMatch(text);
+      if (code == null) return const ParsedField.missing();
+      consumed.add([code.start, code.end]);
+      return ParsedField(
+        code.group(1)!,
+        FieldConfidence.high,
+        source: code.group(0)!.trim(),
+      );
+    }
     consumed.add([m.start, m.end]);
     final value = m.group(1)!.toUpperCase();
     return ParsedField(value, FieldConfidence.high, source: m.group(0));
