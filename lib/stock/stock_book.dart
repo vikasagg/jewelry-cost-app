@@ -75,6 +75,14 @@ class StockBook extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The most recent earlier count (any status) — shown as "Last day".
+  DailyStock? dayBefore(String date) {
+    for (final d in all()) {
+      if (d.date.compareTo(date) < 0) return d;
+    }
+    return null;
+  }
+
   /// The latest verified day before [date] — its count is [date]'s opening.
   DailyStock? verifiedBefore(String date) {
     for (final d in all()) {

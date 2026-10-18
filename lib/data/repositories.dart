@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../billing/bill.dart';
 import '../models/calculation_record.dart';
 import '../models/gold_rates.dart';
 import '../models/jewellery_input.dart';
@@ -169,6 +170,32 @@ class HistoryRepository {
   Future<void> delete(String id) async {
     await _store.delete('$_prefix$id');
     await _store.delete('$_imagePrefix$id');
+    await _store.delete('$_billPrefix$id');
+  }
+
+  static const _billPrefix = 'bill_';
+  static const _billCounterKey = 'bill_counter';
+
+  /// The bill made for a saved calculation, if any.
+  Bill? billFor(String id) {
+    final raw = _store.get('$_billPrefix$id');
+    if (raw == null) return null;
+    try {
+      return Bill.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveBill(String id, Bill bill) =>
+      _store.put('$_billPrefix$id', jsonEncode(bill.toJson()));
+
+  /// Next bill number, e.g. "DJB-0001" (the counter moves on [saveBill]
+  /// of a new bill via [takeBillNumber]).
+  Future<String> takeBillNumber() async {
+    final n = (int.tryParse(_store.get(_billCounterKey) ?? '') ?? 0) + 1;
+    await _store.put(_billCounterKey, '$n');
+    return 'DJB-${n.toString().padLeft(4, '0')}';
   }
 
   /// JPEG thumbnail of the scanned tag, if one was saved.

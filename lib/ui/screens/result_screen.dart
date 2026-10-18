@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app_state.dart';
+import '../../billing/bill.dart';
 import '../../branding.dart';
 import '../../core/money.dart';
 import '../../models/gold_rates.dart';
@@ -16,6 +17,7 @@ import '../summary_text.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/price_icons.dart';
+import 'bill_screen.dart';
 import 'details_form_screen.dart';
 import 'scan_screen.dart';
 
@@ -218,6 +220,38 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
         ),
       ],
+    ),
+  );
+
+  /// Asks for the customer details, saves the bill with this estimate and
+  /// shows it.
+  Future<void> _generateBill() async {
+    if (_recordId == null || _dirty) await _save(auto: true);
+    if (!mounted || _recordId == null) return;
+    final state = AppScope.read(context);
+    final c = await showBillDialog(context, initial: state.billFor(_recordId!));
+    if (c == null || !mounted) return;
+    final bill = await state.saveBill(
+      _recordId!,
+      customerName: c.name,
+      phone: c.phone,
+      address: c.address,
+      payment: c.payment,
+    );
+    if (mounted) await _openBill(bill);
+  }
+
+  Future<void> _openBill(Bill bill) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (route) => BillScreen(
+        bill: bill,
+        input: _input,
+        result: _result!,
+        onEditCustomer: () {
+          Navigator.of(route).pop();
+          _generateBill();
+        },
+      ),
     ),
   );
 
@@ -668,6 +702,22 @@ class _ResultScreenState extends State<ResultScreen> {
           _RatesUsedCard(rates: _rates, highlight: r.purity, current: current),
         ],
         const SizedBox(height: 10),
+        Builder(
+          builder: (context) {
+            final bill = _recordId == null
+                ? null
+                : AppScope.of(context).billFor(_recordId!);
+            return FilledButton.icon(
+              key: const Key('generateBill'),
+              onPressed: () => bill == null ? _generateBill() : _openBill(bill),
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: Text(
+                bill == null ? 'Generate Bill' : 'View Bill ${bill.billNo}',
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
         FilledButton.icon(
           key: const Key('sendWhatsApp'),
           style: FilledButton.styleFrom(

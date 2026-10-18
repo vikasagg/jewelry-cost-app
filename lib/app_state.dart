@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 
+import 'billing/bill.dart';
 import 'data/key_value_store.dart';
 import 'data/repositories.dart';
 import 'models/calculation_record.dart';
@@ -93,6 +94,39 @@ class AppState extends ChangeNotifier {
     await _defaults.recordTagNumber(input.tagNumber);
     notifyListeners();
     return record;
+  }
+
+  /// The bill made for a saved calculation, if any.
+  Bill? billFor(String id) => history.billFor(id);
+
+  /// Creates the bill for a saved calculation (or updates its customer
+  /// details, keeping the bill number and date).
+  Future<Bill> saveBill(
+    String recordId, {
+    required String customerName,
+    required String phone,
+    required String address,
+    required PaymentMode payment,
+  }) async {
+    final existing = history.billFor(recordId);
+    final bill =
+        existing?.copyWith(
+          customerName: customerName,
+          phone: phone,
+          address: address,
+          payment: payment,
+        ) ??
+        Bill(
+          billNo: await history.takeBillNumber(),
+          customerName: customerName,
+          phone: phone,
+          address: address,
+          payment: payment,
+          createdAt: _clock(),
+        );
+    await history.saveBill(recordId, bill);
+    notifyListeners();
+    return bill;
   }
 
   /// Thumbnail of the scanned tag saved with a calculation.

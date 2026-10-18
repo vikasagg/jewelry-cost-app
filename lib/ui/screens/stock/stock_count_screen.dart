@@ -26,6 +26,12 @@ class StockCountScreen extends StatefulWidget {
 
 class _StockCountScreenState extends State<StockCountScreen> {
   late DailyStock _day = widget.initial;
+
+  /// The previous count (any status), shown in the "Last day" column.
+  late final DailyStock? _lastDay = AppScope.read(
+    context,
+  ).stock.dayBefore(_day.date);
+  bool _nameError = false;
   late final _employee = TextEditingController(text: _day.employee);
   late final _note = TextEditingController(text: _day.note);
   final _employeeFocus = FocusNode();
@@ -97,8 +103,9 @@ class _StockCountScreenState extends State<StockCountScreen> {
     }
   }
 
-  void _snack(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(String msg) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar() // newest message replaces the last one
+    ..showSnackBar(SnackBar(content: Text(msg)));
 
   Future<void> _saveEmployee() async {
     if (_editable && _employee.text.trim() != _day.employee) {
@@ -114,6 +121,13 @@ class _StockCountScreenState extends State<StockCountScreen> {
 
   Future<void> _enterCount(StockItem item) async {
     if (!_editable) return;
+    // The employee name is mandatory before counting.
+    if (_employee.text.trim().isEmpty) {
+      setState(() => _nameError = true);
+      _employeeFocus.requestFocus();
+      _snack('Enter your name first');
+      return;
+    }
     final count = _day.count(item.code);
     final r = await showCountKeypad(
       context,
@@ -167,6 +181,12 @@ class _StockCountScreenState extends State<StockCountScreen> {
   }
 
   Future<void> _submit() async {
+    if (_employee.text.trim().isEmpty) {
+      setState(() => _nameError = true);
+      _employeeFocus.requestFocus();
+      _snack('Enter your name first');
+      return;
+    }
     await _saveEmployee();
     await _saveNote();
     if (!mounted) return;
@@ -386,10 +406,18 @@ class _StockCountScreenState extends State<StockCountScreen> {
                 focusNode: _employeeFocus,
                 enabled: _editable,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Employee name',
-                  prefixIcon: Icon(Icons.person_outline),
+                decoration: InputDecoration(
+                  labelText: 'Employee name *',
+                  prefixIcon: const Icon(Icons.person_outline),
+                  errorText: _nameError && _employee.text.trim().isEmpty
+                      ? 'Name is required'
+                      : null,
                 ),
+                onChanged: (t) {
+                  if (_nameError && t.trim().isNotEmpty) {
+                    setState(() => _nameError = false);
+                  }
+                },
                 onSubmitted: (_) => _saveEmployee(),
               ),
               const SizedBox(height: 12),
@@ -480,6 +508,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
         _ItemRow(
           item: i,
           day: d,
+          lastDay: _lastDay?.counts[i.code],
           grouped: items.length > 1,
           editable: _editable,
           onCount: () => _enterCount(i),
@@ -642,7 +671,7 @@ class _ColumnHeader extends StatelessWidget {
     child: Row(
       children: [
         Expanded(flex: 5, child: SizedBox()),
-        _Head('Prev'),
+        _Head('Last day'),
         _Head('Exp'),
         _Head('Count'),
         _Head('Diff'),
@@ -672,6 +701,7 @@ class _ItemRow extends StatelessWidget {
     required this.day,
     required this.grouped,
     required this.editable,
+    required this.lastDay,
     required this.onCount,
     required this.onRemark,
   });
@@ -679,6 +709,9 @@ class _ItemRow extends StatelessWidget {
   final DailyStock day;
   final bool grouped;
   final bool editable;
+
+  /// The previous count of this item (null: no earlier count).
+  final int? lastDay;
   final VoidCallback onCount;
   final VoidCallback onRemark;
 
@@ -729,7 +762,7 @@ class _ItemRow extends StatelessWidget {
                   ],
                 ),
               ),
-              _Num('${day.previousClosing(item.code)}'),
+              _Num('${lastDay ?? '—'}'),
               _Num(
                 '${day.expected(item.code)}',
                 hint: adj == 0 ? null : (adj > 0 ? '+$adj adj' : '$adj adj'),

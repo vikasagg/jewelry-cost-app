@@ -243,6 +243,15 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Ring'), findsOneWidget);
     expect(find.text('Chashma'), findsOneWidget);
+    expect(find.text('Last day'), findsOneWidget);
+
+    // The employee name is mandatory before counting.
+    await t.tap(find.byKey(const Key('count_LGR')));
+    await t.pumpAndSettle();
+    expect(find.text('Name is required'), findsOneWidget);
+    expect(find.byKey(const Key('keypadDisplay')), findsNothing);
+    await t.enterText(find.byKey(const Key('stockEmployee')), 'Ravi');
+    await t.pump();
 
     await t.tap(find.byKey(const Key('count_LGR')));
     await t.pumpAndSettle();
@@ -325,6 +334,7 @@ void main() {
     await t.pumpAndSettle();
 
     // 5 + 3 − 1 on the keypad: every entry and the total are shown.
+    await t.enterText(find.byKey(const Key('stockEmployee')), 'Meena');
     await t.tap(find.byKey(const Key('count_LGR')));
     await t.pumpAndSettle();
     for (final k in ['5', '+', '3', '−', '1']) {
