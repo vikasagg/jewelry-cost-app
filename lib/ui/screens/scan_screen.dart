@@ -187,14 +187,15 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  /// Manual 90° rotation (when automatic detection picks wrongly).
-  Future<void> _rotateAndRescan() async {
-    final image = _preview;
-    if (image == null) return;
-    setState(() => _status = 'Rotating…');
-    _preview = await _enhancer.rotate(image, 90);
-    await _runOcr(autoRotate: false);
-  }
+  /// Clears this scan and goes back to the start for the next tag.
+  void _newScan() => setState(() {
+    _original = null;
+    _preview = null;
+    _parsed = null;
+    _rotationNote = null;
+    _error = null;
+    _status = null;
+  });
 
   Future<void> _showPermissionHelp(ImageSource source) => showDialog<void>(
     context: context,
@@ -382,11 +383,21 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     var parsed = _parsed!;
     if (parsed.itemName.needsConfirmation) parsed = parsed.confirm('itemName');
+    // A small copy of the photo travels with the estimate into history.
+    Uint8List? thumb;
+    try {
+      thumb = await _enhancer.thumbnail(_preview!);
+    } catch (_) {
+      thumb = null; // the estimate still works without a photo
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => DetailsFormScreen(parsed: parsed)),
+      MaterialPageRoute(
+        builder: (_) => DetailsFormScreen(parsed: parsed, image: thumb),
+      ),
     );
   }
 
@@ -525,33 +536,32 @@ class _ScanScreenState extends State<ScanScreen> {
             ],
           ),
         ),
-      TileGrid(
-        minTileWidth: 150,
+      Row(
         children: [
-          OutlinedButton.icon(
-            onPressed: _busy
-                ? null
-                : () => _capture(_lastSource ?? ImageSource.camera),
-            icon: const Icon(Icons.replay),
-            label: const Text('Retake'),
-          ),
-          OutlinedButton.icon(
-            key: const Key('recrop'),
-            onPressed: _busy ? null : _cropAndScan,
-            icon: const Icon(Icons.crop),
-            label: const Text('Crop'),
-          ),
-          OutlinedButton.icon(
-            key: const Key('rotate'),
-            onPressed: _busy ? null : _rotateAndRescan,
-            icon: const Icon(Icons.rotate_right),
-            label: const Text('Rotate'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _runOcr,
-            icon: const Icon(Icons.document_scanner_outlined),
-            label: const Text('Rescan'),
-          ),
+          for (final (i, b) in [
+            OutlinedButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () => _capture(_lastSource ?? ImageSource.camera),
+              icon: const Icon(Icons.replay),
+              label: const Text('Retake'),
+            ),
+            OutlinedButton.icon(
+              key: const Key('recrop'),
+              onPressed: _busy ? null : _cropAndScan,
+              icon: const Icon(Icons.crop),
+              label: const Text('Crop'),
+            ),
+            OutlinedButton.icon(
+              key: const Key('newScan'),
+              onPressed: _busy ? null : _newScan,
+              icon: const Icon(Icons.add_a_photo_outlined),
+              label: const Text('New'),
+            ),
+          ].indexed) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: b),
+          ],
         ],
       ),
       if (p != null) ...[

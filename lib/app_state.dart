@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 
@@ -60,6 +62,7 @@ class AppState extends ChangeNotifier {
     required PricingResult result,
     String? existingId,
     String source = 'manual',
+    Uint8List? image,
   }) async {
     final now = _clock();
     final existing = existingId == null ? null : history.byId(existingId);
@@ -80,10 +83,15 @@ class AppState extends ChangeNotifier {
             source: source,
           );
     await history.save(record);
+    // A re-save without a new photo keeps the one already stored.
+    if (image != null) await history.saveImage(record.id, image);
     await _defaults.recordTagNumber(input.tagNumber);
     notifyListeners();
     return record;
   }
+
+  /// Thumbnail of the scanned tag saved with a calculation.
+  Uint8List? imageFor(String id) => history.imageFor(id);
 
   Future<void> deleteCalculation(String id) async {
     await history.delete(id);

@@ -40,6 +40,22 @@ void main() {
   ButtonStyleButton continueButton(WidgetTester t) =>
       t.widget<ButtonStyleButton>(find.byKey(const Key('continueScan')));
 
+  /// Continue makes the photo thumbnail in a background isolate first.
+  Future<void> continueToForm(WidgetTester t) async {
+    await t.runAsync(() async {
+      await t.tap(find.byKey(const Key('continueScan')));
+      for (
+        var i = 0;
+        i < 50 && find.byKey(const Key('goldWeight')).evaluate().isEmpty;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await t.pump();
+      }
+    });
+    await t.pumpAndSettle();
+  }
+
   String fieldText(WidgetTester t, String key) =>
       (t.widget(find.byKey(Key(key))) as TextField).controller!.text;
 
@@ -56,8 +72,7 @@ void main() {
     expect(find.text('Continue'), findsOneWidget);
     expect(find.byKey(const Key('confirmHint')), findsNothing);
 
-    await t.tap(find.byKey(const Key('continueScan')));
-    await t.pumpAndSettle();
+    await continueToForm(t);
     expect(fieldText(t, 'goldWeight'), '10.5');
     expect(find.textContaining('highlighted'), findsNothing);
   });
@@ -68,8 +83,7 @@ void main() {
     await t.tap(find.byKey(const Key('confirmAll')));
     await t.pumpAndSettle();
     expect(find.text('Continue'), findsOneWidget);
-    await t.tap(find.byKey(const Key('continueScan')));
-    await t.pumpAndSettle();
+    await continueToForm(t);
     expect(fieldText(t, 'goldWeight'), '5.886');
     expect(fieldText(t, 'grossWeight'), '6.41');
     expect(find.textContaining('highlighted'), findsNothing);
@@ -87,8 +101,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('4.250 g'), findsOneWidget);
 
-    await t.tap(find.byKey(const Key('continueScan')));
-    await t.pumpAndSettle();
+    await continueToForm(t);
     expect(fieldText(t, 'goldWeight'), '4.25');
   });
 
@@ -108,11 +121,25 @@ void main() {
 
     await t.tap(find.byKey(const Key('confirm_stone.1')));
     await t.pumpAndSettle();
-    await t.tap(find.byKey(const Key('continueScan')));
-    await t.pumpAndSettle();
+    await continueToForm(t);
     expect(fieldText(t, 'stone.0.weight'), '0.4');
     expect(fieldText(t, 'stone.1.weight'), '0.11');
     expect(find.textContaining('highlighted'), findsNothing);
+  });
+
+  testWidgets('the tag photo is shown on the summary and kept in history', (
+    t,
+  ) async {
+    final state = await open(t, 'Tag No: R-7\nPurity: 22K\nN.Wt 4.000 g');
+    await continueToForm(t);
+    await t.tap(find.byKey(const Key('calculate')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('resultPhoto')), findsOneWidget);
+    final saved = state.history.all().single;
+    expect(state.imageFor(saved.id), isNotNull);
+
+    await state.deleteCalculation(saved.id);
+    expect(state.imageFor(saved.id), isNull);
   });
 
   test('confirm() re-checks the weight balance with corrected values', () {

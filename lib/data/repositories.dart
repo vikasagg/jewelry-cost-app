@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../models/calculation_record.dart';
 import '../models/gold_rates.dart';
@@ -130,6 +131,10 @@ class HistoryRepository {
   final KeyValueStore _store;
   static const _prefix = 'calc_';
 
+  /// Photo thumbnails are kept under their own keys so listing history
+  /// never decodes images.
+  static const _imagePrefix = 'img_';
+
   /// Newest first.
   List<CalculationRecord> all() {
     final out = <CalculationRecord>[];
@@ -161,5 +166,22 @@ class HistoryRepository {
   Future<void> save(CalculationRecord r) =>
       _store.put('$_prefix${r.id}', jsonEncode(r.toJson()));
 
-  Future<void> delete(String id) => _store.delete('$_prefix$id');
+  Future<void> delete(String id) async {
+    await _store.delete('$_prefix$id');
+    await _store.delete('$_imagePrefix$id');
+  }
+
+  /// JPEG thumbnail of the scanned tag, if one was saved.
+  Uint8List? imageFor(String id) {
+    final raw = _store.get('$_imagePrefix$id');
+    if (raw == null) return null;
+    try {
+      return base64Decode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveImage(String id, Uint8List jpeg) =>
+      _store.put('$_imagePrefix$id', base64Encode(jpeg));
 }

@@ -123,6 +123,7 @@ void main() {
       // = 93,000; GST 3% = 2,790.
       '₹95,790.00',
     );
+    await reveal(t, find.byKey(const Key('sendWhatsApp')));
     expect(find.byKey(const Key('sendWhatsApp')), findsOneWidget);
 
     // Saved to history automatically, without tapping Save.
