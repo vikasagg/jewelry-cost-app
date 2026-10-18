@@ -25,6 +25,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Bill PDFs shared straight to a WhatsApp chat. -->
+        <provider
+            android:name=".BillFileProvider"
+            android:authorities="${applicationId}.bills"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/bill_paths" />
+        </provider>
         <!-- Download the ML Kit OCR model at install time so scanning works offline. -->
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
@@ -41,6 +51,8 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE"/>
         </intent>

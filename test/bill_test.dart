@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewellery_cost/app_state.dart';
 import 'package:jewellery_cost/billing/bill.dart';
@@ -7,6 +8,7 @@ import 'package:jewellery_cost/models/gold_rates.dart';
 import 'package:jewellery_cost/models/jewellery_input.dart';
 import 'package:jewellery_cost/models/purity.dart';
 import 'package:jewellery_cost/pricing/pricing_engine.dart';
+import 'package:jewellery_cost/ui/screens/bill_screen.dart';
 import 'package:jewellery_cost/ui/screens/result_screen.dart';
 import 'package:jewellery_cost/ui/theme.dart';
 
@@ -125,4 +127,50 @@ void main() {
       expect(String.fromCharCodes(pdf.take(4)), '%PDF');
     },
   );
+
+  testWidgets('Android Print sends the PDF to both WhatsApp numbers', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1080, 9000);
+    t.view.devicePixelRatio = 2.6;
+    addTearDown(t.view.reset);
+    final calls = <Map<Object?, Object?>>[];
+    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('damiyaas/whatsapp'),
+      (c) async {
+        calls.add(c.arguments as Map<Object?, Object?>);
+        return 'done';
+      },
+    );
+    final result = const PricingEngine()
+        .calculate(input, rates.perGram)
+        .result!;
+    final bill = Bill(
+      billNo: 'DJB-0007',
+      customerName: 'Asha',
+      createdAt: DateTime(2026, 10, 18),
+    );
+    await t.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: BillScreen(bill: bill, input: input, result: result),
+      ),
+    );
+    // Let the PDF build (font loading runs outside fake async).
+    await t.runAsync(() => Future<void>.delayed(const Duration(seconds: 2)));
+    await t.pump();
+    expect(find.text('Print — send PDF'), findsOneWidget);
+    await t.tap(find.byKey(const Key('billPrint')));
+    await t.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await t.pump();
+    expect(calls.map((c) => c['phone']), billWhatsAppNumbers);
+    expect(calls.first['name'], 'bill-DJB-0007.pdf');
+    expect(
+      String.fromCharCodes((calls.first['bytes'] as Uint8List).take(4)),
+      '%PDF',
+    );
+    expect(find.textContaining('Bill sent to'), findsOneWidget);
+  });
 }

@@ -56,3 +56,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider for bill PDFs sent to WhatsApp.
+    implementation("androidx.core:core:1.13.1")
+}

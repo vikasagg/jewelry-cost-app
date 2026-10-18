@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
@@ -169,6 +170,13 @@ class BillScreen extends StatefulWidget {
   State<BillScreen> createState() => _BillScreenState();
 }
 
+const _whatsAppChannel = MethodChannel('damiyaas/whatsapp');
+
+/// The Android app can hand the PDF straight to a WhatsApp chat; iPhone
+/// and browsers only offer the share sheet.
+bool get _directWhatsApp =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
 class _BillScreenState extends State<BillScreen> {
   // Built up front: browsers (iPhone Safari) only open the share sheet
   // straight after a tap, so the PDF must be ready before it.
@@ -189,23 +197,47 @@ class _BillScreenState extends State<BillScreen> {
 
   String get _pdfName => 'bill-${widget.bill.billNo}.pdf';
 
+  String get _caption =>
+      '${Brand.name} — Bill ${widget.bill.billNo} · '
+      '${widget.bill.customerName} · '
+      '${formatPaise(widget.result.totalPaise)}';
+
   Future<void> _sendPdf() async {
     try {
       final bytes = _bytes ?? await _pdf;
+      if (_directWhatsApp && await _sendToWhatsApp(bytes)) return;
       await SharePlus.instance.share(
         ShareParams(
           files: [
             XFile.fromData(bytes, mimeType: 'application/pdf', name: _pdfName),
           ],
-          text:
-              '${Brand.name} — Bill ${widget.bill.billNo} · '
-              '${widget.bill.customerName} · '
-              '${formatPaise(widget.result.totalPaise)}',
+          text: _caption,
         ),
       );
     } catch (e) {
       if (mounted) _snack('Could not share the PDF: $e');
     }
+  }
+
+  /// Android app: opens each shop number's WhatsApp chat in turn with the
+  /// PDF attached (the next one when the user comes back). False when
+  /// WhatsApp isn't installed, so the share sheet is used instead.
+  Future<bool> _sendToWhatsApp(Uint8List bytes) async {
+    for (final n in billWhatsAppNumbers) {
+      final r = await _whatsAppChannel.invokeMethod<String>('sendFile', {
+        'bytes': bytes,
+        'name': _pdfName,
+        'phone': n,
+        'text': _caption,
+      });
+      if (r == 'notInstalled') return false;
+    }
+    if (mounted) {
+      _snack(
+        'Bill sent to ${billWhatsAppNumbers.map(displayPhone).join(' and ')}',
+      );
+    }
+    return true;
   }
 
   Future<void> _printOnPaper() async {
@@ -334,8 +366,12 @@ class _BillScreenState extends State<BillScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Opens the share sheet with the bill PDF: pick WhatsApp, then '
-                '${billWhatsAppNumbers.map(displayPhone).join(' or ')}.',
+                _directWhatsApp
+                    ? 'Sends the bill PDF on WhatsApp to '
+                          '${billWhatsAppNumbers.map(displayPhone).join(', then ')}'
+                          ': tap Send, then Back for the next.'
+                    : 'Opens the share sheet with the bill PDF: pick WhatsApp, '
+                          'then ${billWhatsAppNumbers.map(displayPhone).join(' or ')}.',
                 style: const TextStyle(fontSize: 12, color: AppColors.muted),
               ),
               const SizedBox(height: 8),
