@@ -4,13 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../app_state.dart';
 import '../../billing/bill.dart';
 import '../../branding.dart';
 import '../../core/money.dart';
-import '../../models/jewellery_input.dart';
-import '../../pricing/pricing_engine.dart';
+import '../../models/calculation_record.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'bill_items_screen.dart';
 
 /// Customer details entered for a bill.
 typedef BillCustomer = ({
@@ -149,22 +150,62 @@ Future<BillCustomer?> showBillDialog(BuildContext context, {Bill? initial}) {
   );
 }
 
-/// The bill: customer, item, full cost break-up and payment mode. Print
-/// shares the bill as a PDF (pick WhatsApp and the chat); "Print on
-/// paper" opens the printer dialog.
+/// Builds a bill: pick the products (the current estimate ticked), then
+/// the customer's details, then shows it. With [existing], edits that bill
+/// (same number and date).
+Future<void> startBill(
+  BuildContext context, {
+  Bill? existing,
+  String? preselectId,
+}) async {
+  final state = AppScope.read(context);
+  // A "Saved to history" message would cover the picker's Next button.
+  ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+  final picked = await Navigator.of(context).push<List<CalculationRecord>>(
+    MaterialPageRoute(
+      builder: (_) => BillItemsScreen(
+        initialIds: existing != null
+            ? [for (final i in existing.items) i.recordId]
+            : [?preselectId],
+      ),
+    ),
+  );
+  if (picked == null || picked.isEmpty || !context.mounted) return;
+  final c = await showBillDialog(context, initial: existing);
+  if (c == null || !context.mounted) return;
+  final bill = await state.saveBill(
+    existing: existing,
+    items: picked,
+    customerName: c.name,
+    phone: c.phone,
+    address: c.address,
+    payment: c.payment,
+  );
+  if (context.mounted) await showBill(context, bill);
+}
+
+/// Opens a saved bill; "Edit bill" goes back through [startBill].
+Future<void> showBill(BuildContext context, Bill bill) =>
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (route) => BillScreen(
+          bill: bill,
+          onEdit: () {
+            Navigator.of(route).pop();
+            startBill(context, existing: bill);
+          },
+        ),
+      ),
+    );
+
+/// The bill: customer, a table of the products, totals and payment mode.
+/// Print sends the PDF (straight to the shop's WhatsApp chats in the
+/// Android app); "Print on paper" opens the printer dialog.
 class BillScreen extends StatefulWidget {
-  const BillScreen({
-    super.key,
-    required this.bill,
-    required this.input,
-    required this.result,
-    this.onEditCustomer,
-  });
+  const BillScreen({super.key, required this.bill, this.onEdit});
 
   final Bill bill;
-  final JewelleryInput input;
-  final PricingResult result;
-  final VoidCallback? onEditCustomer;
+  final VoidCallback? onEdit;
 
   @override
   State<BillScreen> createState() => _BillScreenState();
@@ -180,11 +221,7 @@ bool get _directWhatsApp =>
 class _BillScreenState extends State<BillScreen> {
   // Built up front: browsers (iPhone Safari) only open the share sheet
   // straight after a tap, so the PDF must be ready before it.
-  late final Future<Uint8List> _pdf = buildBillPdf(
-    widget.bill,
-    widget.input,
-    widget.result,
-  );
+  late final Future<Uint8List> _pdf = buildBillPdf(widget.bill);
   Uint8List? _bytes;
 
   @override
@@ -197,11 +234,6 @@ class _BillScreenState extends State<BillScreen> {
 
   String get _pdfName => 'bill-${widget.bill.billNo}.pdf';
 
-  String get _caption =>
-      '${Brand.name} — Bill ${widget.bill.billNo} · '
-      '${widget.bill.customerName} · '
-      '${formatPaise(widget.result.totalPaise)}';
-
   Future<void> _sendPdf() async {
     try {
       final bytes = _bytes ?? await _pdf;
@@ -211,7 +243,7 @@ class _BillScreenState extends State<BillScreen> {
           files: [
             XFile.fromData(bytes, mimeType: 'application/pdf', name: _pdfName),
           ],
-          text: _caption,
+          text: billCaption(widget.bill),
         ),
       );
     } catch (e) {
@@ -228,7 +260,7 @@ class _BillScreenState extends State<BillScreen> {
         'bytes': bytes,
         'name': _pdfName,
         'phone': n,
-        'text': _caption,
+        'text': billCaption(widget.bill),
       });
       if (r == 'notInstalled') return false;
     }
@@ -254,7 +286,8 @@ class _BillScreenState extends State<BillScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final i = widget.input, r = widget.result, b = widget.bill;
+    final b = widget.bill;
+    final rows = billRows(b);
     return Scaffold(
       appBar: AppBar(title: Text('Bill ${b.billNo}')),
       body: SafeArea(
@@ -292,22 +325,15 @@ class _BillScreenState extends State<BillScreen> {
                           value: b.address,
                         ),
                       const Divider(),
-                      const SectionTitle('Item'),
-                      for (final (k, v) in billItemRows(i, r))
-                        InfoRow(
-                          icon: const Icon(Icons.diamond_outlined, size: 18),
-                          label: k,
-                          value: v,
-                        ),
-                      const Divider(),
-                      const SectionTitle('Cost break-up'),
-                      for (final l in billLines(i, r))
-                        BreakdownRow(
-                          label: l.label,
-                          value: formatPaise(l.paise),
-                          caption: l.detail,
-                          bold: l.bold,
-                        ),
+                      SectionTitle('Products (${rows.length})'),
+                      _ProductTable(rows: rows),
+                      const SizedBox(height: 10),
+                      _TotalRow(
+                        'Products before GST',
+                        formatPaise(b.subtotalPaise),
+                      ),
+                      for (final (k, v) in b.gstSummary)
+                        _TotalRow(k, formatPaise(v)),
                       const Divider(),
                       Row(
                         children: [
@@ -321,7 +347,7 @@ class _BillScreenState extends State<BillScreen> {
                             ),
                           ),
                           Text(
-                            formatPaise(r.totalPaise),
+                            formatPaise(b.totalPaise),
                             key: const Key('billTotal'),
                             style: const TextStyle(
                               fontSize: 24,
@@ -381,11 +407,12 @@ class _BillScreenState extends State<BillScreen> {
                 icon: const Icon(Icons.print_outlined),
                 label: const Text('Print on paper'),
               ),
-              if (widget.onEditCustomer != null)
+              if (widget.onEdit != null)
                 TextButton.icon(
-                  onPressed: widget.onEditCustomer,
+                  key: const Key('billEdit'),
+                  onPressed: widget.onEdit,
                   icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Edit customer details'),
+                  label: const Text('Edit bill (products or customer)'),
                 ),
             ],
           ),
@@ -393,4 +420,91 @@ class _BillScreenState extends State<BillScreen> {
       ),
     );
   }
+}
+
+/// The products as a table (scrolls sideways on narrow phones).
+class _ProductTable extends StatelessWidget {
+  const _ProductTable({required this.rows});
+  final List<BillRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    const head = TextStyle(fontWeight: FontWeight.w700, fontSize: 13);
+    const cell = TextStyle(fontSize: 13);
+    const small = TextStyle(fontSize: 11, color: AppColors.muted);
+    Widget pad(Widget w, {bool right = false}) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Align(
+        alignment: right ? Alignment.centerRight : Alignment.centerLeft,
+        child: w,
+      ),
+    );
+    return SingleChildScrollView(
+      key: const Key('billTable'),
+      scrollDirection: Axis.horizontal,
+      child: Table(
+        defaultColumnWidth: const IntrinsicColumnWidth(),
+        columnWidths: const {1: FixedColumnWidth(190)},
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        border: TableBorder.all(color: AppColors.line, width: 0.8),
+        children: [
+          TableRow(
+            decoration: const BoxDecoration(color: AppColors.goldSoft),
+            children: [
+              for (var c = 0; c < billColumns.length; c++)
+                pad(Text(billColumns[c], style: head), right: c > 2),
+            ],
+          ),
+          for (final r in rows)
+            TableRow(
+              children: [
+                for (var c = 0; c < r.cells.length; c++)
+                  c == 1
+                      ? pad(
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                r.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              for (final d in r.details) Text(d, style: small),
+                            ],
+                          ),
+                        )
+                      : pad(
+                          Text(
+                            r.cells[c],
+                            style: c == 9
+                                ? cell.copyWith(fontWeight: FontWeight.w700)
+                                : cell,
+                          ),
+                          right: c > 2,
+                        ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TotalRow extends StatelessWidget {
+  const _TotalRow(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      children: [
+        Expanded(child: Text(label)),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
 }

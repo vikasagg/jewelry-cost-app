@@ -7,6 +7,7 @@ import '../../models/gold_rates.dart';
 import '../../models/purity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'bill_screen.dart';
 import 'details_form_screen.dart';
 import 'history_screen.dart';
 import 'rate_setup_screen.dart';
@@ -105,6 +106,14 @@ class DashboardScreen extends StatelessWidget {
                     'View and manage past calculations '
                     '($historyCount saved)',
                 onTap: () => _open(context, const HistoryScreen()),
+              ),
+              const SizedBox(height: 10),
+              MenuTile(
+                key: const Key('newBill'),
+                icon: Icons.receipt_long_outlined,
+                title: 'New Bill',
+                subtitle: 'Pick scanned products and bill the customer',
+                onTap: () => startBill(context),
               ),
               const SizedBox(height: 10),
               MenuTile(

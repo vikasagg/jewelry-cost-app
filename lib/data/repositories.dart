@@ -170,28 +170,40 @@ class HistoryRepository {
   Future<void> delete(String id) async {
     await _store.delete('$_prefix$id');
     await _store.delete('$_imagePrefix$id');
-    await _store.delete('$_billPrefix$id');
   }
 
-  static const _billPrefix = 'bill_';
+  // Bills are stored by bill number; each holds its products.
+  static const _billPrefix = 'billdoc_';
   static const _billCounterKey = 'bill_counter';
 
-  /// The bill made for a saved calculation, if any.
-  Bill? billFor(String id) {
-    final raw = _store.get('$_billPrefix$id');
-    if (raw == null) return null;
-    try {
-      return Bill.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
+  /// All bills, newest first.
+  List<Bill> bills() {
+    final out = <Bill>[];
+    for (final k in _store.keys.where((k) => k.startsWith(_billPrefix))) {
+      try {
+        out.add(
+          Bill.fromJson(jsonDecode(_store.get(k)!) as Map<String, dynamic>),
+        );
+      } catch (_) {
+        // Skip corrupt entries.
+      }
     }
+    out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return out;
   }
 
-  Future<void> saveBill(String id, Bill bill) =>
-      _store.put('$_billPrefix$id', jsonEncode(bill.toJson()));
+  /// The newest bill that includes the saved calculation [id], if any.
+  Bill? billFor(String id) {
+    for (final b in bills()) {
+      if (b.items.any((i) => i.recordId == id)) return b;
+    }
+    return null;
+  }
 
-  /// Next bill number, e.g. "DJB-0001" (the counter moves on [saveBill]
-  /// of a new bill via [takeBillNumber]).
+  Future<void> saveBill(Bill bill) =>
+      _store.put('$_billPrefix${bill.billNo}', jsonEncode(bill.toJson()));
+
+  /// Takes the next bill number, e.g. "DJB-0001".
   Future<String> takeBillNumber() async {
     final n = (int.tryParse(_store.get(_billCounterKey) ?? '') ?? 0) + 1;
     await _store.put(_billCounterKey, '$n');

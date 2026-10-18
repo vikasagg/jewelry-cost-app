@@ -96,25 +96,30 @@ class AppState extends ChangeNotifier {
     return record;
   }
 
-  /// The bill made for a saved calculation, if any.
-  Bill? billFor(String id) => history.billFor(id);
+  /// The newest bill that includes a saved calculation, if any.
+  Bill? billFor(String recordId) => history.billFor(recordId);
 
-  /// Creates the bill for a saved calculation (or updates its customer
-  /// details, keeping the bill number and date).
-  Future<Bill> saveBill(
-    String recordId, {
+  /// Creates a bill for the chosen products, or updates [existing]
+  /// (keeping its number and date). Products are copied into the bill.
+  Future<Bill> saveBill({
+    Bill? existing,
+    required List<CalculationRecord> items,
     required String customerName,
     required String phone,
     required String address,
     required PaymentMode payment,
   }) async {
-    final existing = history.billFor(recordId);
+    final products = [
+      for (final r in items)
+        BillItem(recordId: r.id, input: r.input, result: r.result),
+    ];
     final bill =
         existing?.copyWith(
           customerName: customerName,
           phone: phone,
           address: address,
           payment: payment,
+          items: products,
         ) ??
         Bill(
           billNo: await history.takeBillNumber(),
@@ -123,8 +128,9 @@ class AppState extends ChangeNotifier {
           address: address,
           payment: payment,
           createdAt: _clock(),
+          items: products,
         );
-    await history.saveBill(recordId, bill);
+    await history.saveBill(bill);
     notifyListeners();
     return bill;
   }
