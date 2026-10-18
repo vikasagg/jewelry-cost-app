@@ -163,28 +163,28 @@ class _RatesCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          LayoutBuilder(
-            builder: (context, c) {
-              final perRow = c.maxWidth > 420 ? 6 : 3;
-              final w = c.maxWidth / perRow;
-              return Wrap(
-                runSpacing: 10,
-                children: [
-                  for (final p in Purity.values.reversed)
-                    SizedBox(
-                      width: w,
-                      child: Column(
-                        children: [
-                          Text(
-                            p.label,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w600,
-                            ),
+          // One row of purities with dividers, as in the design.
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                for (final (n, p) in Purity.values.reversed.indexed) ...[
+                  if (n > 0)
+                    const VerticalDivider(width: 1, color: AppColors.line),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          p.label,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.goldDeep,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(height: 2),
-                          FittedBox(
+                        ),
+                        const SizedBox(height: 2),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: FittedBox(
                             child: Text(
                               formatInr(
                                 rates.quotedRateFor(p) ?? 0,
@@ -195,12 +195,13 @@ class _RatesCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                  ),
                 ],
-              );
-            },
+              ],
+            ),
           ),
           const Divider(height: 18),
           Row(

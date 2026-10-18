@@ -466,12 +466,15 @@ class MenuTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-    color: AppColors.surface,
+    // Soft beige tile with a light shadow, as in the design.
+    color: const Color(0xFFF8F0E1),
+    elevation: 1.5,
+    shadowColor: AppColors.goldDeep.withValues(alpha: 0.25),
     child: InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         child: Row(
           children: [
             IconSquare(icon: Icon(icon), size: 42),

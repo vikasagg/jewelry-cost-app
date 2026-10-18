@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../core/money.dart';
 import '../../models/jewellery_input.dart';
 import '../../ocr/image_enhancer.dart';
 import '../../ocr/ocr_service.dart';
@@ -11,6 +10,7 @@ import '../../ocr/tag_parser.dart';
 import '../../models/purity.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/price_icons.dart';
 import 'crop_screen.dart';
 import 'details_form_screen.dart';
 
@@ -53,10 +53,14 @@ class _ScanScreenState extends State<ScanScreen> {
     super.initState();
     _preview = widget.initialImage;
     _parsed = widget.initialResult;
+    if (_parsed != null) _fillFields(_parsed!);
   }
 
   @override
   void dispose() {
+    for (final c in _fields.values) {
+      c.dispose();
+    }
     _ocrService?.dispose();
     super.dispose();
   }
@@ -166,6 +170,7 @@ class _ScanScreenState extends State<ScanScreen> {
       final b = best!;
       setState(() {
         _parsed = b.tag;
+        _fillFields(b.tag);
         _status = null;
         if (b.deg != 0) {
           _preview = b.img;
@@ -186,16 +191,6 @@ class _ScanScreenState extends State<ScanScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
-
-  /// Clears this scan and goes back to the start for the next tag.
-  void _newScan() => setState(() {
-    _original = null;
-    _preview = null;
-    _parsed = null;
-    _rotationNote = null;
-    _error = null;
-    _status = null;
-  });
 
   Future<void> _showPermissionHelp(ImageSource source) => showDialog<void>(
     context: context,
@@ -236,93 +231,6 @@ class _ScanScreenState extends State<ScanScreen> {
       _parsed = _parsed!.confirm(k);
     }
   });
-
-  Future<void> _editNumber(
-    String key,
-    String label,
-    String unit,
-    double? initial,
-  ) async {
-    // Dialog controllers are left to the garbage collector: disposing
-    // them right after the dialog pops breaks its closing animation.
-    final c = TextEditingController(text: formatInput(initial));
-    final v = await showDialog<double>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(label),
-        content: TextField(
-          key: const Key('editValue'),
-          controller: c,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(suffixText: unit),
-          onSubmitted: (t) => Navigator.pop(context, parseNumber(t)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('editSave'),
-            onPressed: () => Navigator.pop(context, parseNumber(c.text)),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (v != null && !v.isNaN && v > 0) _confirm(key, v);
-  }
-
-  Future<void> _editText(String key, String label, String? initial) async {
-    final c = TextEditingController(text: initial ?? '');
-    final v = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(label),
-        content: TextField(
-          key: const Key('editValue'),
-          controller: c,
-          autofocus: true,
-          onSubmitted: (t) => Navigator.pop(context, t),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('editSave'),
-            onPressed: () => Navigator.pop(context, c.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (v != null && v.trim().isNotEmpty) _confirm(key, v.trim());
-  }
-
-  Future<void> _editPurity(Purity? current) async {
-    final v = await showDialog<Purity>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Gold purity'),
-        children: [
-          for (final p in Purity.values.reversed)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, p),
-              child: Text(
-                p.label,
-                style: TextStyle(
-                  fontWeight: p == current ? FontWeight.w700 : null,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (v != null) _confirm('purity', v);
-  }
 
   Future<void> _editStone(int i, ParsedStone st) async {
     final c = TextEditingController(text: formatInput(st.weight.value));
@@ -379,7 +287,9 @@ class _ScanScreenState extends State<ScanScreen> {
     );
     final w = parseNumber(c.text);
     if (ok == true) {
-      _confirm('stone.$i', (w == null || w.isNaN || w <= 0 ? null : w, kind));
+      final weight = w == null || w.isNaN || w <= 0 ? null : w;
+      _confirm('stone.$i', (weight, kind));
+      if (weight != null) _fields['stone.$i']?.text = formatInput(weight);
     }
   }
 
@@ -405,7 +315,9 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan Jewellery Tag'),
+        title: Text(
+          _preview == null ? 'Scan Jewellery Tag' : 'Extracted Details',
+        ),
         actions: const [HistoryAction(), RatesAction()],
       ),
       body: SafeArea(
@@ -499,152 +411,171 @@ class _ScanScreenState extends State<ScanScreen> {
 
   List<Widget> _review() {
     final p = _parsed;
+    final pending = p == null ? const <String>{} : _pending(p);
     return [
-      ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          color: Colors.black,
-          constraints: const BoxConstraints(maxHeight: 240),
-          child: Image.memory(_preview!, fit: BoxFit.contain),
-        ),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: GestureDetector(
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (context) => Dialog(
+                  clipBehavior: Clip.antiAlias,
+                  child: InteractiveViewer(child: Image.memory(_preview!)),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  height: 130,
+                  color: AppColors.tile,
+                  child: Image.memory(
+                    _preview!,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    cacheWidth: 600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton.icon(
+                  key: const Key('newScan'),
+                  onPressed: _busy
+                      ? null
+                      : () => _capture(_lastSource ?? ImageSource.camera),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Scan Again'),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  key: const Key('recrop'),
+                  onPressed: _busy ? null : _cropAndScan,
+                  icon: const Icon(Icons.crop),
+                  label: const Text('Crop'),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
       if (_ocr.needsEnhancement)
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Enhance image for OCR'),
-          subtitle: const Text('Greyscale, contrast and sharpening'),
           value: _enhance,
           onChanged: _busy ? null : (v) => setState(() => _enhance = v),
         ),
       if (_rotationNote != null)
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.screen_rotation_alt,
-                size: 18,
-                color: AppColors.ok,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  _rotationNote!,
-                  style: const TextStyle(color: AppColors.ok),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            _rotationNote!,
+            style: const TextStyle(color: AppColors.ok, fontSize: 13),
           ),
         ),
-      Row(
-        children: [
-          for (final (i, b) in [
-            OutlinedButton.icon(
-              onPressed: _busy
-                  ? null
-                  : () => _capture(_lastSource ?? ImageSource.camera),
-              icon: const Icon(Icons.replay),
-              label: const Text('Retake'),
-            ),
-            OutlinedButton.icon(
-              key: const Key('recrop'),
-              onPressed: _busy ? null : _cropAndScan,
-              icon: const Icon(Icons.crop),
-              label: const Text('Crop'),
-            ),
-            OutlinedButton.icon(
-              key: const Key('newScan'),
-              onPressed: _busy ? null : _newScan,
-              icon: const Icon(Icons.add_a_photo_outlined),
-              label: const Text('New'),
-            ),
-          ].indexed) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(child: b),
-          ],
-        ],
-      ),
       if (p != null) ...[
-        const SizedBox(height: 12),
-        const SectionTitle('Detected on tag'),
-        if (_pending(p).isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
+        const SizedBox(height: 14),
+        const SectionTitle('Extracted Information'),
+        if (pending.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
             child: Text(
-              'Check the highlighted values: tap Confirm if correct, '
-              'or Edit to fix them.',
-              key: const Key('confirmHint'),
-              style: const TextStyle(color: AppColors.warn),
+              'Check the highlighted values: correct them, or tap ✓ if right.',
+              key: Key('confirmHint'),
+              style: TextStyle(color: AppColors.warn),
             ),
           ),
-        _DetectedRow(
-          'Tag / item code',
-          p.tagNumber,
-          (v) => v,
+        _FieldRow(
+          icon: PriceIcons.tag,
+          label: 'Item / Tag No.',
+          field: p.tagNumber,
           fieldKey: 'tagNumber',
           onConfirm: () => _confirm('tagNumber'),
-          onEdit: () =>
-              _editText('tagNumber', 'Tag / item code', p.tagNumber.value),
+          child: _textField('tagNumber', number: false, hint: 'Auto (DJ-)'),
         ),
-        _DetectedRow<Purity>(
-          'Gold purity',
-          p.purity,
-          (v) => v.label,
-          missingText: 'Not found — 18K will be used',
-          fieldKey: 'purity',
-          onConfirm: () => _confirm('purity'),
-          onEdit: () => _editPurity(p.purity.value),
-        ),
-        _DetectedRow<double>(
-          'Gold weight',
-          p.goldWeight,
-          (v) => '${v.toStringAsFixed(3)} g',
+        _FieldRow(
+          icon: PriceIcons.weight,
+          label: 'Gold Weight (g)',
+          field: p.goldWeight,
           fieldKey: 'goldWeight',
           required: true,
           onConfirm: () => _confirm('goldWeight'),
-          onEdit: () =>
-              _editNumber('goldWeight', 'Gold weight', 'g', p.goldWeight.value),
+          child: _textField('goldWeight'),
         ),
-        _DetectedRow<double>(
-          'Gross weight',
-          p.grossWeight,
-          (v) => '${v.toStringAsFixed(3)} g',
+        _FieldRow(
+          icon: PriceIcons.purity,
+          label: 'Gold Purity',
+          field: p.purity,
+          fieldKey: 'purity',
+          missingNote: 'Not on the tag — 18K will be used',
+          onConfirm: () => _confirm('purity'),
+          child: DropdownButtonFormField<Purity>(
+            key: const Key('field_purity'),
+            initialValue: p.purity.value,
+            isDense: true,
+            hint: const Text('18K'),
+            items: [
+              for (final x in Purity.values.reversed)
+                DropdownMenuItem(value: x, child: Text(x.label)),
+            ],
+            onChanged: (v) {
+              if (v != null) _confirm('purity', v);
+            },
+          ),
+        ),
+        _FieldRow(
+          icon: PriceIcons.grossWeight,
+          label: 'Gross Weight (g)',
+          field: p.grossWeight,
           fieldKey: 'grossWeight',
           onConfirm: () => _confirm('grossWeight'),
-          onEdit: () => _editNumber(
-            'grossWeight',
-            'Gross weight',
-            'g',
-            p.grossWeight.value,
-          ),
+          child: _textField('grossWeight', hint: 'Optional'),
         ),
-        if (p.stones.isEmpty)
-          const _DetectedRow<double>(
-            'Diamonds / stones',
-            ParsedField.missing(),
-            _noFormat,
-          ),
         for (var i = 0; i < p.stones.length; i++)
-          _DetectedRow<double>(
-            '${p.stones[i].label}${switch (p.stones[i].kind.value) {
-              StoneKind.stone => ' (stone)',
-              StoneKind.polki => ' (polki)',
-              _ => '',
-            }}'
-            '${p.stones[i].code == null ? '' : ' · rate ${p.stones[i].code}'}',
-            p.stones[i].kind.needsConfirmation
+          _FieldRow(
+            icon: switch (p.stones[i].kind.value) {
+              StoneKind.stone => PriceIcons.stone,
+              StoneKind.polki => PriceIcons.polki,
+              _ => PriceIcons.diamond,
+            },
+            label:
+                '${p.stones[i].label}${p.stones[i].code == null ? '' : ' · ${p.stones[i].code}'}'
+                ' (${p.stones[i].kind.value == StoneKind.stone ? 'pcs' : 'ct'})',
+            sublabel: p.stones[i].kind.value?.label,
+            onLabelTap: () => _editStone(i, p.stones[i]),
+            labelKey: 'edit_stone.$i',
+            field: p.stones[i].kind.needsConfirmation
                 ? ParsedField(
                     p.stones[i].weight.value,
                     FieldConfidence.low,
                     note: p.stones[i].kind.note,
                   )
                 : p.stones[i].weight,
-            (v) => p.stones[i].kind.value == StoneKind.stone
-                ? '${formatInput(v)} pcs'
-                : '${v.toStringAsFixed(2)} ct',
             fieldKey: 'stone.$i',
             onConfirm: () => _confirm('stone.$i'),
-            onEdit: () => _editStone(i, p.stones[i]),
+            child: _textField('stone.$i'),
+          ),
+        if (p.makingValue.isFound)
+          _FieldRow(
+            icon: PriceIcons.labour,
+            label: switch (p.makingMethod.value) {
+              MakingMethod.percentOfGold => 'Making (% of gold)',
+              MakingMethod.fixed => 'Making (₹ fixed)',
+              _ => 'Making (₹ per g)',
+            },
+            field: p.makingValue,
+            fieldKey: 'makingValue',
+            onConfirm: () => _confirm('makingValue'),
+            child: _textField('makingValue'),
           ),
         if (p.weightBalance != null)
           Padding(
@@ -661,52 +592,50 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
           ),
-        _DetectedRow<double>(
-          'Making charges',
-          p.makingValue,
-          (v) => switch (p.makingMethod.value) {
-            MakingMethod.percentOfGold => '${formatInput(v)}% of gold',
-            MakingMethod.fixed => '${formatInr(v)} fixed',
-            _ => '${formatInr(v)}/g',
-          },
-          missingText: 'Not found — shop default will be used',
-          fieldKey: 'makingValue',
-          onConfirm: () => _confirm('makingValue'),
-          onEdit: () => _editNumber(
-            'makingValue',
-            'Making charges',
-            switch (p.makingMethod.value) {
-              MakingMethod.percentOfGold => '%',
-              MakingMethod.fixed => '₹',
-              _ => '₹/g',
-            },
-            p.makingValue.value,
+        if (p.stones.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'No diamond, stone or polki lines on this tag.',
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
         if (p.unreadStoneWeightG != null) ...[
+          const SizedBox(height: 8),
           _Banner(
             text:
                 'Gross − net weight is ${p.unreadStoneWeightG!.toStringAsFixed(3)} g '
                 '(≈ ${(p.unreadStoneWeightG! / 0.2).toStringAsFixed(2)} ct), so this '
                 'item likely has stones, but no stone lines were read. Tap Crop '
-                'to frame only the tag and rescan, or add stone lines manually.',
+                'to frame only the tag and rescan, or add stone lines on the next '
+                'screen.',
             color: AppColors.warn,
             icon: Icons.diamond_outlined,
           ),
-          const SizedBox(height: 8),
         ],
         // A missing gold weight must be typed in, so "Confirm all" waits.
-        if (_pending(p).length > 1 && p.goldWeight.isFound)
+        if (pending.length > 1 && p.goldWeight.isFound)
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
               key: const Key('confirmAll'),
               onPressed: _busy ? null : _confirmAll,
               icon: const Icon(Icons.done_all),
-              label: Text('Confirm all ${_pending(p).length}'),
+              label: Text('Confirm all ${pending.length}'),
             ),
           ),
+        const SizedBox(height: 14),
+        FilledButton(
+          key: const Key('continueScan'),
+          style: FilledButton.styleFrom(minimumSize: const Size(56, 48)),
+          onPressed: _busy || pending.isNotEmpty ? null : _continue,
+          child: Text(
+            pending.isEmpty
+                ? 'Continue to Calculate'
+                : 'Confirm ${pending.length} '
+                      '${pending.length == 1 ? 'value' : 'values'} to continue',
+          ),
+        ),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
           title: const Text('Recognised text'),
@@ -725,134 +654,166 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          key: const Key('continueScan'),
-          onPressed: _busy || _pending(p).isNotEmpty ? null : _continue,
-          icon: const Icon(Icons.arrow_forward),
-          label: Text(
-            _pending(p).isEmpty
-                ? 'Continue'
-                : 'Confirm ${_pending(p).length} '
-                      '${_pending(p).length == 1 ? 'value' : 'values'} to continue',
-          ),
-        ),
       ],
     ];
   }
+
+  /// Editable value boxes, filled from the scan; typing confirms the value.
+  final _fields = <String, TextEditingController>{};
+
+  /// Puts the scanned values into the edit boxes.
+  void _fillFields(ParsedTag p) {
+    String num(double? v) => formatInput(v);
+    final values = <String, String>{
+      'tagNumber': p.tagNumber.value ?? '',
+      'goldWeight': num(p.goldWeight.value),
+      'grossWeight': num(p.grossWeight.value),
+      'makingValue': num(p.makingValue.value),
+      for (var i = 0; i < p.stones.length; i++)
+        'stone.$i': num(p.stones[i].weight.value),
+    };
+    for (final c in _fields.values) {
+      c.dispose();
+    }
+    _fields
+      ..clear()
+      ..addAll({
+        for (final e in values.entries)
+          e.key: TextEditingController(text: e.value),
+      });
+  }
+
+  Widget _textField(String key, {bool number = true, String? hint}) {
+    final c = _fields.putIfAbsent(key, TextEditingController.new);
+    return TextField(
+      key: Key('field_$key'),
+      controller: c,
+      keyboardType: number
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.text,
+      decoration: InputDecoration(hintText: hint),
+      onChanged: (t) {
+        if (!number) {
+          if (t.trim().isNotEmpty) _confirm(key, t.trim());
+          return;
+        }
+        final v = parseNumber(t);
+        if (v == null || v.isNaN || v <= 0) return;
+        _confirm(key, key.startsWith('stone.') ? (v, null) : v);
+      },
+    );
+  }
 }
 
-String _noFormat(double v) => '$v';
-
-class _DetectedRow<T> extends StatelessWidget {
-  const _DetectedRow(
-    this.label,
-    this.field,
-    this.format, {
-    this.fieldKey,
-    this.required = false,
-    this.missingText = 'Not found',
+/// One extracted value: icon square, label and an edit box. Unclear
+/// values get a gold border, the reason and a ✓ to confirm as read.
+class _FieldRow extends StatelessWidget {
+  const _FieldRow({
+    required this.icon,
+    required this.label,
+    required this.field,
+    required this.fieldKey,
+    required this.child,
     this.onConfirm,
-    this.onEdit,
+    this.required = false,
+    this.missingNote,
+    this.sublabel,
+    this.onLabelTap,
+    this.labelKey,
   });
+  final Widget icon;
   final String label;
-  final ParsedField<T> field;
-  final String Function(T) format;
-
-  /// Key prefix for the row's buttons (e.g. 'goldWeight' → 'confirm_goldWeight').
-  final String? fieldKey;
-
-  /// A missing value must be entered here (gold weight).
-  final bool required;
-  final String missingText;
+  final ParsedField<dynamic> field;
+  final String fieldKey;
+  final Widget child;
   final VoidCallback? onConfirm;
-  final VoidCallback? onEdit;
+  final bool required;
+  final String? missingNote;
+  final String? sublabel;
+  final VoidCallback? onLabelTap;
+  final String? labelKey;
 
   @override
   Widget build(BuildContext context) {
     final unclear = field.needsConfirmation;
     final mustEnter = required && !field.isFound;
-    final (icon, color, text) = switch (field.confidence) {
-      FieldConfidence.high => (
-        Icons.check_circle,
-        AppColors.ok,
-        format(field.value as T),
-      ),
-      FieldConfidence.low => (
-        Icons.help,
-        AppColors.warn,
-        format(field.value as T),
-      ),
-      FieldConfidence.missing => (
-        mustEnter ? Icons.error_outline : Icons.remove_circle_outline,
-        mustEnter ? AppColors.warn : AppColors.muted,
-        mustEnter ? 'Not found — enter it' : missingText,
-      ),
-    };
-    final row = Row(
+    final note = unclear
+        ? field.note
+        : mustEnter
+        ? 'Not found on the tag — enter it'
+        : !field.isFound
+        ? missingNote
+        : null;
+    final highlight = unclear || mustEnter;
+    Widget labelText = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(label, style: const TextStyle(color: AppColors.muted)),
-        ),
-        Flexible(
-          child: Text(
-            text,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: color == AppColors.muted ? AppColors.muted : AppColors.ink,
-            ),
-          ),
-        ),
-      ],
-    );
-    if (!unclear && !mustEnter) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: row,
-      );
-    }
-    final k = fieldKey ?? label;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.fromLTRB(10, 8, 6, 4),
-      decoration: BoxDecoration(
-        color: AppColors.warn.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.warn.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          row,
-          if (unclear && field.note != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 26, top: 4),
-              child: Text(
-                field.note!,
-                style: const TextStyle(fontSize: 12, color: AppColors.warn),
-              ),
-            ),
+        Text(label, style: const TextStyle(fontSize: 14)),
+        if (sublabel != null)
           Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              TextButton.icon(
-                key: Key('edit_$k'),
-                onPressed: onEdit,
-                icon: const Icon(Icons.edit, size: 18),
-                label: Text(mustEnter ? 'Enter' : 'Edit'),
+              Text(
+                sublabel!,
+                style: const TextStyle(fontSize: 12, color: AppColors.goldDeep),
               ),
-              if (unclear)
-                FilledButton.icon(
-                  key: Key('confirm_$k'),
-                  onPressed: onConfirm,
-                  icon: const Icon(Icons.check, size: 18),
-                  label: const Text('Confirm'),
+              if (onLabelTap != null)
+                const Icon(
+                  Icons.arrow_drop_down,
+                  size: 16,
+                  color: AppColors.goldDeep,
                 ),
             ],
           ),
+      ],
+    );
+    if (onLabelTap != null) {
+      labelText = InkWell(
+        key: labelKey == null ? null : Key(labelKey!),
+        onTap: onLabelTap,
+        child: labelText,
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: highlight ? const EdgeInsets.all(6) : EdgeInsets.zero,
+      decoration: highlight
+          ? BoxDecoration(
+              color: AppColors.warnSoft,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.warn.withValues(alpha: 0.5)),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconSquare(icon: icon, size: 38),
+              const SizedBox(width: 10),
+              Expanded(flex: 5, child: labelText),
+              const SizedBox(width: 8),
+              Expanded(flex: 4, child: child),
+              if (unclear)
+                IconButton(
+                  key: Key('confirm_$fieldKey'),
+                  tooltip: 'Confirm as read',
+                  onPressed: onConfirm,
+                  icon: const Icon(Icons.check_circle, color: AppColors.gold),
+                ),
+            ],
+          ),
+          if (note != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 48, top: 3),
+              child: Text(
+                note,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: highlight ? AppColors.warn : AppColors.muted,
+                ),
+              ),
+            ),
         ],
       ),
     );
