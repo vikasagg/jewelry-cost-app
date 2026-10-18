@@ -16,7 +16,13 @@ import 'details_form_screen.dart';
 
 /// Capture → crop → enhance → OCR → review detected fields.
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key});
+  const ScanScreen({super.key, this.initialImage, this.initialResult});
+
+  /// Tests only: start on the review step with this image and OCR result.
+  @visibleForTesting
+  final Uint8List? initialImage;
+  @visibleForTesting
+  final ParsedTag? initialResult;
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -41,6 +47,13 @@ class _ScanScreenState extends State<ScanScreen> {
   String? _error;
   ParsedTag? _parsed;
   String? _rotationNote;
+
+  @override
+  void initState() {
+    super.initState();
+    _preview = widget.initialImage;
+    _parsed = widget.initialResult;
+  }
 
   @override
   void dispose() {
@@ -205,9 +218,175 @@ class _ScanScreenState extends State<ScanScreen> {
     ),
   );
 
+  /// Values still to be checked here: unclear readings (one entry per
+  /// stone line) and a missing gold weight.
+  Set<String> _pending(ParsedTag p) => {
+    for (final k in p.uncertainFields.keys)
+      if (k != 'itemName') // not shown or used
+        k.startsWith('stone.') ? k.substring(0, k.lastIndexOf('.')) : k,
+    if (!p.goldWeight.isFound) 'goldWeight',
+  };
+
+  void _confirm(String key, [Object? value]) =>
+      setState(() => _parsed = _parsed!.confirm(key, value));
+
+  void _confirmAll() => setState(() {
+    for (final k in _pending(_parsed!)) {
+      _parsed = _parsed!.confirm(k);
+    }
+  });
+
+  Future<void> _editNumber(
+    String key,
+    String label,
+    String unit,
+    double? initial,
+  ) async {
+    // Dialog controllers are left to the garbage collector: disposing
+    // them right after the dialog pops breaks its closing animation.
+    final c = TextEditingController(text: formatInput(initial));
+    final v = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(label),
+        content: TextField(
+          key: const Key('editValue'),
+          controller: c,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(suffixText: unit),
+          onSubmitted: (t) => Navigator.pop(context, parseNumber(t)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('editSave'),
+            onPressed: () => Navigator.pop(context, parseNumber(c.text)),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (v != null && !v.isNaN && v > 0) _confirm(key, v);
+  }
+
+  Future<void> _editText(String key, String label, String? initial) async {
+    final c = TextEditingController(text: initial ?? '');
+    final v = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(label),
+        content: TextField(
+          key: const Key('editValue'),
+          controller: c,
+          autofocus: true,
+          onSubmitted: (t) => Navigator.pop(context, t),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('editSave'),
+            onPressed: () => Navigator.pop(context, c.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (v != null && v.trim().isNotEmpty) _confirm(key, v.trim());
+  }
+
+  Future<void> _editPurity(Purity? current) async {
+    final v = await showDialog<Purity>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Gold purity'),
+        children: [
+          for (final p in Purity.values.reversed)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, p),
+              child: Text(
+                p.label,
+                style: TextStyle(
+                  fontWeight: p == current ? FontWeight.w700 : null,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (v != null) _confirm('purity', v);
+  }
+
+  Future<void> _editStone(int i, ParsedStone st) async {
+    final c = TextEditingController(text: formatInput(st.weight.value));
+    var kind = st.kind.value ?? StoneKind.diamond;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: Text(st.label),
+          // Fixed width: SegmentedButton cannot size itself intrinsically.
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SegmentedButton<StoneKind>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final k in StoneKind.values)
+                      ButtonSegment(value: k, label: Text(k.label)),
+                  ],
+                  selected: {kind},
+                  onSelectionChanged: (s) => setLocal(() => kind = s.first),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  key: const Key('editValue'),
+                  controller: c,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: kind == StoneKind.stone ? 'Pieces' : 'Weight',
+                    suffixText: kind == StoneKind.stone ? 'pcs' : 'ct',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('editSave'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final w = parseNumber(c.text);
+    if (ok == true) {
+      _confirm('stone.$i', (w == null || w.isNaN || w <= 0 ? null : w, kind));
+    }
+  }
+
   void _continue() {
+    var parsed = _parsed!;
+    if (parsed.itemName.needsConfirmation) parsed = parsed.confirm('itemName');
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => DetailsFormScreen(parsed: _parsed)),
+      MaterialPageRoute(builder: (_) => DetailsFormScreen(parsed: parsed)),
     );
   }
 
@@ -378,17 +557,56 @@ class _ScanScreenState extends State<ScanScreen> {
       if (p != null) ...[
         const SizedBox(height: 12),
         const SectionTitle('Detected on tag'),
-        _DetectedRow('Tag / item code', p.tagNumber, (v) => v),
-        _DetectedRow<Purity>('Gold purity', p.purity, (v) => v.label),
+        if (_pending(p).isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Check the highlighted values: tap Confirm if correct, '
+              'or Edit to fix them.',
+              key: const Key('confirmHint'),
+              style: const TextStyle(color: AppColors.warn),
+            ),
+          ),
+        _DetectedRow(
+          'Tag / item code',
+          p.tagNumber,
+          (v) => v,
+          fieldKey: 'tagNumber',
+          onConfirm: () => _confirm('tagNumber'),
+          onEdit: () =>
+              _editText('tagNumber', 'Tag / item code', p.tagNumber.value),
+        ),
+        _DetectedRow<Purity>(
+          'Gold purity',
+          p.purity,
+          (v) => v.label,
+          missingText: 'Not found — 18K will be used',
+          fieldKey: 'purity',
+          onConfirm: () => _confirm('purity'),
+          onEdit: () => _editPurity(p.purity.value),
+        ),
         _DetectedRow<double>(
           'Gold weight',
           p.goldWeight,
           (v) => '${v.toStringAsFixed(3)} g',
+          fieldKey: 'goldWeight',
+          required: true,
+          onConfirm: () => _confirm('goldWeight'),
+          onEdit: () =>
+              _editNumber('goldWeight', 'Gold weight', 'g', p.goldWeight.value),
         ),
         _DetectedRow<double>(
           'Gross weight',
           p.grossWeight,
           (v) => '${v.toStringAsFixed(3)} g',
+          fieldKey: 'grossWeight',
+          onConfirm: () => _confirm('grossWeight'),
+          onEdit: () => _editNumber(
+            'grossWeight',
+            'Gross weight',
+            'g',
+            p.grossWeight.value,
+          ),
         ),
         if (p.stones.isEmpty)
           const _DetectedRow<double>(
@@ -396,24 +614,27 @@ class _ScanScreenState extends State<ScanScreen> {
             ParsedField.missing(),
             _noFormat,
           ),
-        for (final st in p.stones)
+        for (var i = 0; i < p.stones.length; i++)
           _DetectedRow<double>(
-            '${st.label}${switch (st.kind.value) {
+            '${p.stones[i].label}${switch (p.stones[i].kind.value) {
               StoneKind.stone => ' (stone)',
               StoneKind.polki => ' (polki)',
               _ => '',
             }}'
-            '${st.code == null ? '' : ' · rate ${st.code}'}',
-            st.kind.needsConfirmation
+            '${p.stones[i].code == null ? '' : ' · rate ${p.stones[i].code}'}',
+            p.stones[i].kind.needsConfirmation
                 ? ParsedField(
-                    st.weight.value,
+                    p.stones[i].weight.value,
                     FieldConfidence.low,
-                    note: st.kind.note,
+                    note: p.stones[i].kind.note,
                   )
-                : st.weight,
-            (v) => st.kind.value == StoneKind.stone
+                : p.stones[i].weight,
+            (v) => p.stones[i].kind.value == StoneKind.stone
                 ? '${formatInput(v)} pcs'
                 : '${v.toStringAsFixed(2)} ct',
+            fieldKey: 'stone.$i',
+            onConfirm: () => _confirm('stone.$i'),
+            onEdit: () => _editStone(i, p.stones[i]),
           ),
         if (p.weightBalance != null)
           Padding(
@@ -438,6 +659,19 @@ class _ScanScreenState extends State<ScanScreen> {
             MakingMethod.fixed => '${formatInr(v)} fixed',
             _ => '${formatInr(v)}/g',
           },
+          missingText: 'Not found — shop default will be used',
+          fieldKey: 'makingValue',
+          onConfirm: () => _confirm('makingValue'),
+          onEdit: () => _editNumber(
+            'makingValue',
+            'Making charges',
+            switch (p.makingMethod.value) {
+              MakingMethod.percentOfGold => '%',
+              MakingMethod.fixed => '₹',
+              _ => '₹/g',
+            },
+            p.makingValue.value,
+          ),
         ),
         const SizedBox(height: 8),
         if (p.unreadStoneWeightG != null) ...[
@@ -452,13 +686,16 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           const SizedBox(height: 8),
         ],
-        if (p.uncertainFields.isNotEmpty || p.missingRequired.isNotEmpty)
-          const _Banner(
-            text:
-                'Some values are unclear or missing. You will be asked to '
-                'confirm them on the next screen.',
-            color: AppColors.warn,
-            icon: Icons.help_outline,
+        // A missing gold weight must be typed in, so "Confirm all" waits.
+        if (_pending(p).length > 1 && p.goldWeight.isFound)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const Key('confirmAll'),
+              onPressed: _busy ? null : _confirmAll,
+              icon: const Icon(Icons.done_all),
+              label: Text('Confirm all ${_pending(p).length}'),
+            ),
           ),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
@@ -481,9 +718,14 @@ class _ScanScreenState extends State<ScanScreen> {
         const SizedBox(height: 12),
         FilledButton.icon(
           key: const Key('continueScan'),
-          onPressed: _busy ? null : _continue,
+          onPressed: _busy || _pending(p).isNotEmpty ? null : _continue,
           icon: const Icon(Icons.arrow_forward),
-          label: const Text('Continue'),
+          label: Text(
+            _pending(p).isEmpty
+                ? 'Continue'
+                : 'Confirm ${_pending(p).length} '
+                      '${_pending(p).length == 1 ? 'value' : 'values'} to continue',
+          ),
         ),
       ],
     ];
@@ -493,13 +735,33 @@ class _ScanScreenState extends State<ScanScreen> {
 String _noFormat(double v) => '$v';
 
 class _DetectedRow<T> extends StatelessWidget {
-  const _DetectedRow(this.label, this.field, this.format);
+  const _DetectedRow(
+    this.label,
+    this.field,
+    this.format, {
+    this.fieldKey,
+    this.required = false,
+    this.missingText = 'Not found',
+    this.onConfirm,
+    this.onEdit,
+  });
   final String label;
   final ParsedField<T> field;
   final String Function(T) format;
 
+  /// Key prefix for the row's buttons (e.g. 'goldWeight' → 'confirm_goldWeight').
+  final String? fieldKey;
+
+  /// A missing value must be entered here (gold weight).
+  final bool required;
+  final String missingText;
+  final VoidCallback? onConfirm;
+  final VoidCallback? onEdit;
+
   @override
   Widget build(BuildContext context) {
+    final unclear = field.needsConfirmation;
+    final mustEnter = required && !field.isFound;
     final (icon, color, text) = switch (field.confidence) {
       FieldConfidence.high => (
         Icons.check_circle,
@@ -509,34 +771,77 @@ class _DetectedRow<T> extends StatelessWidget {
       FieldConfidence.low => (
         Icons.help,
         AppColors.warn,
-        '${format(field.value as T)}  (confirm)',
+        format(field.value as T),
       ),
       FieldConfidence.missing => (
-        Icons.remove_circle_outline,
-        AppColors.muted,
-        'Not found',
+        mustEnter ? Icons.error_outline : Icons.remove_circle_outline,
+        mustEnter ? AppColors.warn : AppColors.muted,
+        mustEnter ? 'Not found — enter it' : missingText,
       ),
     };
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(label, style: const TextStyle(color: AppColors.muted)),
+    final row = Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(label, style: const TextStyle(color: AppColors.muted)),
+        ),
+        Flexible(
+          child: Text(
+            text,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: color == AppColors.muted ? AppColors.muted : AppColors.ink,
+            ),
           ),
-          Flexible(
-            child: Text(
-              text,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: color == AppColors.muted
-                    ? AppColors.muted
-                    : AppColors.ink,
+        ),
+      ],
+    );
+    if (!unclear && !mustEnter) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: row,
+      );
+    }
+    final k = fieldKey ?? label;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.fromLTRB(10, 8, 6, 4),
+      decoration: BoxDecoration(
+        color: AppColors.warn.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.warn.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          row,
+          if (unclear && field.note != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 26, top: 4),
+              child: Text(
+                field.note!,
+                style: const TextStyle(fontSize: 12, color: AppColors.warn),
               ),
             ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                key: Key('edit_$k'),
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit, size: 18),
+                label: Text(mustEnter ? 'Enter' : 'Edit'),
+              ),
+              if (unclear)
+                FilledButton.icon(
+                  key: Key('confirm_$k'),
+                  onPressed: onConfirm,
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Confirm'),
+                ),
+            ],
           ),
         ],
       ),

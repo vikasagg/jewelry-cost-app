@@ -33,6 +33,10 @@ class ParsedField<T> {
 
   bool get needsConfirmation => confidence == FieldConfidence.low;
   bool get isFound => confidence != FieldConfidence.missing;
+
+  /// The value as checked by staff ([value] when given, else the read one).
+  ParsedField<T> confirmed([T? value]) =>
+      ParsedField(value ?? this.value, FieldConfidence.high, source: source);
 }
 
 /// Structured result of parsing a jewellery tag.
@@ -71,6 +75,77 @@ class ParsedTag {
 
   /// Percentage or grams, depending on [wastageMethod].
   final ParsedField<double> wastageValue;
+
+  /// A copy with one value confirmed by staff, optionally corrected.
+  /// [key] is a form field key: 'tagNumber', 'purity', 'goldWeight',
+  /// 'grossWeight', 'makingValue' or 'stone.<i>' (weight and type of one
+  /// line, [value] being a `(double?, StoneKind?)` record).
+  ParsedTag confirm(String key, [Object? value]) {
+    var t = tagNumber, p = purity, g = goldWeight, gr = grossWeight;
+    var mv = makingValue, mm = makingMethod;
+    final st = [...stones];
+    switch (key) {
+      case 'itemName':
+        return ParsedTag(
+          rawText: rawText,
+          itemName: itemName.confirmed(value as String?),
+          tagNumber: tagNumber,
+          purity: purity,
+          goldWeight: goldWeight,
+          grossWeight: grossWeight,
+          stones: stones,
+          weightBalance: weightBalance,
+          makingMethod: makingMethod,
+          makingValue: makingValue,
+          wastageMethod: wastageMethod,
+          wastageValue: wastageValue,
+        );
+      case 'tagNumber':
+        t = t.confirmed(value as String?);
+      case 'purity':
+        p = p.confirmed(value as Purity?);
+      case 'goldWeight':
+        g = g.confirmed(value as double?);
+      case 'grossWeight':
+        gr = gr.confirmed(value as double?);
+      case 'makingValue':
+        mv = mv.confirmed(value as double?);
+        if (mm.isFound) mm = mm.confirmed();
+      default:
+        final i = int.parse(key.substring('stone.'.length));
+        final (w, k) = value as (double?, StoneKind?)? ?? (null, null);
+        st[i] = ParsedStone(
+          label: st[i].label,
+          code: st[i].code,
+          weight: st[i].weight.confirmed(w),
+          kind: st[i].kind.confirmed(k),
+        );
+    }
+    // Re-check gross − net against the (possibly corrected) values.
+    final allCarats =
+        st.isNotEmpty && st.every((x) => x.kind.value != StoneKind.stone);
+    final balance = gr.value != null && g.value != null && allCarats
+        ? WeightBalance(
+            grossG: gr.value!,
+            netG: g.value!,
+            stonesCt: _caratTotal(st),
+          )
+        : null;
+    return ParsedTag(
+      rawText: rawText,
+      itemName: itemName,
+      tagNumber: t,
+      purity: p,
+      goldWeight: g,
+      grossWeight: gr,
+      stones: st,
+      weightBalance: balance,
+      makingMethod: mm,
+      makingValue: mv,
+      wastageMethod: wastageMethod,
+      wastageValue: wastageValue,
+    );
+  }
 
   /// Field keys (matching the details form) that need user confirmation.
   Map<String, String> get uncertainFields {

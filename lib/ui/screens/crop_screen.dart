@@ -22,8 +22,10 @@ class _CropScreenState extends State<CropScreen> {
   final _enhancer = const ImageEnhancer();
   late Uint8List _image = widget.image;
   Size? _imageSize;
-  // Crop rectangle as fractions of the image.
-  Rect _crop = const Rect.fromLTRB(0.08, 0.08, 0.92, 0.92);
+  // Crop rectangle as fractions of the image. Starts as the whole photo so
+  // no text near the edges is cut off; drag the corners to frame the tag.
+  static const _full = Rect.fromLTRB(0, 0, 1, 1);
+  Rect _crop = _full;
   _Drag? _drag;
   bool _busy = false;
 
@@ -67,7 +69,9 @@ class _CropScreenState extends State<CropScreen> {
 
   Future<void> _done({required bool crop}) async {
     setState(() => _busy = true);
-    final out = crop ? await _enhancer.crop(_image, _crop) : _image;
+    final out = crop && _crop != _full
+        ? await _enhancer.crop(_image, _crop)
+        : _image;
     if (mounted) Navigator.of(context).pop(out);
   }
 
@@ -167,8 +171,8 @@ class _CropScreenState extends State<CropScreen> {
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                'Drag the corners so only the printed tag is inside the box. '
-                'Background patterns (wood, cloth) confuse text recognition.',
+                'Optional: drag the corners to frame just the tag, or use '
+                'the full image.',
                 style: TextStyle(color: Colors.white70),
               ),
             ),
