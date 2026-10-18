@@ -46,6 +46,9 @@ void main() {
 
     final state = AppState(MemoryStore());
     await t.pumpWidget(JewelleryCostApp(state: state));
+    // First screen: choose the price calculator (or stock reconciliation).
+    expect(find.byKey(const Key('openStock')), findsOneWidget);
+    await tapKey(t, 'openPriceCalculator');
     expect(find.text('Today\'s gold rates'), findsOneWidget);
 
     // Validation: empty + negative

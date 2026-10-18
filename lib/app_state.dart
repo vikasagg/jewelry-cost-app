@@ -9,6 +9,7 @@ import 'models/calculation_record.dart';
 import 'models/gold_rates.dart';
 import 'models/jewellery_input.dart';
 import 'pricing/pricing_engine.dart';
+import 'stock/stock_book.dart';
 
 /// App-wide state: current gold rates, pricing defaults and history.
 class AppState extends ChangeNotifier {
@@ -16,6 +17,7 @@ class AppState extends ChangeNotifier {
     : _rates = RatesRepository(store),
       _defaults = PricingDefaultsRepository(store),
       history = HistoryRepository(store),
+      stock = StockBook(store, clock: clock),
       _clock = clock ?? DateTime.now {
     _current = _rates.load();
   }
@@ -23,6 +25,9 @@ class AppState extends ChangeNotifier {
   final RatesRepository _rates;
   final PricingDefaultsRepository _defaults;
   final HistoryRepository history;
+
+  /// Daily physical stock counts — separate from pricing and its history.
+  final StockBook stock;
   final DateTime Function() _clock;
   final engine = const PricingEngine();
 

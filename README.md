@@ -21,6 +21,34 @@ calculations work offline.
 | **History** | Saved on the device and searchable by tag number or description. Scanned estimates keep a small photo of the tag (JPEG, ~360 px, stored apart from the record so the list stays fast), shown in the list and at the top of the cost summary (not in the WhatsApp image, so rate codes stay private). Open, edit and recalculate, or delete a record. Each record keeps a **copy of all four gold rates** used at the time, so later rate changes never alter past results. |
 | **Storage protection** | Data sits in a Hive box encrypted with AES-256. The key is held in the Android Keystore or the iOS Keychain (flutter_secure_storage; WebCrypto on web). |
 
+### Daily Stock Summary (stock reconciliation)
+
+The app opens on a chooser: **Price Calculator** or **Stock Reconciliation**
+(also reachable from the price dashboard as *Daily Stock Summary*). Stock
+counting is completely separate: it never reads or changes gold rates,
+prices or saved estimates, and it has its own history.
+
+- **Categories:** Ring (LGR, GGR), Earring (GE, DE), Pendant, Pendant Set,
+  Necklace Set, Bangle, Tikka, Diamond Set, Chain, Chashma, Watch, Nath.
+  Counts are entered on a large numeric keypad; category (Ring, Earring)
+  and grand totals update live.
+- **Reconciliation:** each line shows the previous day's *verified* closing,
+  today's expected opening (that closing + approved adjustments), the
+  physical count and the difference. Differences are highlighted and take a
+  remark. The very first count has nothing to compare with and becomes the
+  opening stock once verified.
+- **Approval:** employee submits → a manager verifies with the manager PIN
+  (stored hashed). Verified counts are locked and become the next day's
+  opening. Stock adjustments and reopening a verified day also need the PIN
+  (reopening is refused once a later day was verified on top of it).
+  Earlier closing balances are never changed to hide a difference.
+- **Audit trail:** every count, remark, submission, adjustment, approval,
+  reopening and share is logged with time and person.
+- **Sharing:** *Share on WhatsApp* opens WhatsApp / WhatsApp Web with the
+  formatted summary pre-filled (pick the chat and send); *Share PDF report*
+  shares a one-page PDF; the share icon sends plain text.
+- Stored locally (encrypted, works offline) under `stock_*` keys.
+
 ### Formulas
 
 ```

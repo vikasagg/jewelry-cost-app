@@ -118,7 +118,6 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
         title: Text(
           widget.firstRun ? 'Welcome to ${Brand.name}' : 'Gold Rate Settings',
         ),
-        automaticallyImplyLeading: !widget.firstRun,
         actions: const [HistoryAction()],
       ),
       body: SafeArea(

@@ -10,6 +10,7 @@ import 'details_form_screen.dart';
 import 'history_screen.dart';
 import 'rate_setup_screen.dart';
 import 'scan_screen.dart';
+import 'stock/stock_home_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -99,6 +100,12 @@ class DashboardScreen extends StatelessWidget {
                     title: 'Gold Rate Settings',
                     onTap: () =>
                         _open(context, const RateSetupScreen(firstRun: false)),
+                  ),
+                  _ActionTile(
+                    key: const Key('dailyStockSummary'),
+                    icon: Icons.inventory_2_outlined,
+                    title: 'Daily Stock Summary',
+                    onTap: () => _open(context, const StockHomeScreen()),
                   ),
                 ],
               ),
