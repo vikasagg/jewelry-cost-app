@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../app_state.dart';
+import '../../../stock/stock_book.dart';
 import '../../../stock/stock_models.dart';
 import '../../../stock/stock_report.dart';
 import '../../theme.dart';
@@ -10,8 +12,27 @@ import 'stock_dialogs.dart';
 
 /// Daily Stock Summary: today's count plus the stock history. Physical
 /// counts only — nothing here touches prices, gold rates or estimates.
-class StockHomeScreen extends StatelessWidget {
+class StockHomeScreen extends StatefulWidget {
   const StockHomeScreen({super.key});
+
+  @override
+  State<StockHomeScreen> createState() => _StockHomeScreenState();
+}
+
+class _StockHomeScreenState extends State<StockHomeScreen> {
+  /// Count date chosen with the date picker; null = today.
+  String? _date;
+
+  Future<void> _pickDate(String current, String today) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: StockBook.parseDate(current),
+      firstDate: DateTime(2020),
+      lastDate: StockBook.parseDate(today),
+      helpText: 'Stock count date',
+    );
+    if (picked != null) setState(() => _date = StockBook.dateKey(picked));
+  }
 
   Future<void> _open(BuildContext context, String date) async {
     final book = AppScope.read(context).stock;
@@ -29,8 +50,10 @@ class StockHomeScreen extends StatelessWidget {
       listenable: book,
       builder: (context, _) {
         final days = book.all();
-        final today = book.byDate(book.today);
-        final past = days.where((d) => d.date != book.today).toList();
+        final date = _date ?? book.today;
+        final selected = book.byDate(date);
+        final past = days.where((d) => d.date != date).toList();
+        final session = book.lastSession;
         return Scaffold(
           appBar: AppBar(
             title: const Text('Daily Stock Summary'),
@@ -54,11 +77,47 @@ class StockHomeScreen extends StatelessWidget {
                     style: TextStyle(color: AppColors.muted, fontSize: 13),
                   ),
                   const SizedBox(height: 10),
-                  _TodayCard(
-                    date: book.today,
-                    day: today,
-                    onOpen: () => _open(context, book.today),
+                  Row(
+                    children: [
+                      const Text(
+                        'Count date',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const Key('stockHomeDate'),
+                          onPressed: () => _pickDate(date, book.today),
+                          icon: const Icon(Icons.calendar_month_outlined),
+                          label: Text(
+                            date == book.today
+                                ? 'Today · ${stockDateLabel(date)}'
+                                : stockDateLabel(date),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 10),
+                  _TodayCard(
+                    date: date,
+                    isToday: date == book.today,
+                    day: selected,
+                    onOpen: () => _open(context, date),
+                  ),
+                  if (session != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Last auto-save: count of ${stockDateLabel(session.date)}'
+                        ' at ${DateFormat('d MMM, h:mm:ss a').format(session.savedAt)}',
+                        key: const Key('lastSession'),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   if (!book.hasManagerPin) ...[
                     const SizedBox(height: 10),
                     Container(
@@ -110,10 +169,12 @@ class StockHomeScreen extends StatelessWidget {
 class _TodayCard extends StatelessWidget {
   const _TodayCard({
     required this.date,
+    required this.isToday,
     required this.day,
     required this.onOpen,
   });
   final String date;
+  final bool isToday;
   final DailyStock? day;
   final VoidCallback onOpen;
 
@@ -142,11 +203,11 @@ class _TodayCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      d == null
-                          ? 'Start today\'s count'
+                      '${d == null
+                          ? 'Start'
                           : d.status == StockStatus.draft
-                          ? 'Continue today\'s count'
-                          : 'Today\'s count',
+                          ? 'Continue'
+                          : 'Open'} ${isToday ? 'today\'s' : 'this day\'s'} count',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 21,

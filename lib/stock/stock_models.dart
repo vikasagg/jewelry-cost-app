@@ -135,6 +135,8 @@ class DailyStock {
     this.approvedBy,
     this.approvedAt,
     this.audit = const [],
+    this.entries = const {},
+    this.savedAt,
   });
 
   /// Stock date as yyyy-MM-dd.
@@ -162,6 +164,13 @@ class DailyStock {
   final String? approvedBy;
   final DateTime? approvedAt;
   final List<StockAuditEvent> audit;
+
+  /// How each count was added up on the keypad, e.g. "5+3-1" (shown so
+  /// staff can check what they entered).
+  final Map<String, String> entries;
+
+  /// When this count was last saved (auto-saved every few seconds).
+  final DateTime? savedAt;
 
   bool get hasOpening => openingFrom != null;
   bool get isLocked => status != StockStatus.draft;
@@ -219,6 +228,8 @@ class DailyStock {
     DateTime? approvedAt,
     bool clearApproval = false,
     List<StockAuditEvent>? audit,
+    Map<String, String>? entries,
+    DateTime? savedAt,
   }) => DailyStock(
     date: date,
     employee: employee ?? this.employee,
@@ -232,6 +243,8 @@ class DailyStock {
     approvedBy: clearApproval ? null : approvedBy ?? this.approvedBy,
     approvedAt: clearApproval ? null : approvedAt ?? this.approvedAt,
     audit: audit ?? this.audit,
+    entries: entries ?? this.entries,
+    savedAt: savedAt ?? this.savedAt,
   );
 
   /// A copy with [event] appended to the audit trail.
@@ -251,6 +264,8 @@ class DailyStock {
     if (approvedBy != null) 'approvedBy': approvedBy,
     if (approvedAt != null) 'approvedAt': approvedAt!.toIso8601String(),
     'audit': [for (final e in audit) e.toJson()],
+    'entries': entries,
+    if (savedAt != null) 'savedAt': savedAt!.toIso8601String(),
   };
 
   factory DailyStock.fromJson(Map<String, dynamic> j) {
@@ -281,10 +296,46 @@ class DailyStock {
       approvedAt: j['approvedAt'] == null
           ? null
           : DateTime.parse(j['approvedAt'] as String),
+      entries: {
+        for (final e in ((j['entries'] as Map?) ?? {}).entries)
+          e.key as String: e.value as String,
+      },
+      savedAt: j['savedAt'] == null
+          ? null
+          : DateTime.parse(j['savedAt'] as String),
       audit: [
         for (final e in (j['audit'] as List? ?? []))
           StockAuditEvent.fromJson((e as Map).cast<String, dynamic>()),
       ],
     );
   }
+}
+
+/// A running keypad sum such as "5+3-1": digits with + and − between them.
+class CountExpression {
+  const CountExpression(this.text);
+
+  /// Canonical form: digits and '+'/'-' only, e.g. "5+3-1".
+  final String text;
+
+  static final _token = RegExp(r'([+-]?)(\d+)');
+
+  /// The numbers with their signs, e.g. [5, 3, -1].
+  List<int> get terms => [
+    for (final m in _token.allMatches(text))
+      (m[1] == '-' ? -1 : 1) * int.parse(m[2]!),
+  ];
+
+  /// True when the text ends with a complete number.
+  bool get isComplete => RegExp(r'\d$').hasMatch(text);
+
+  /// Sum of the complete terms (null when there are none).
+  int? get value => terms.isEmpty ? null : terms.fold<int>(0, (a, b) => a + b);
+
+  /// More than one number (worth showing the working).
+  bool get hasWorking => terms.length > 1;
+
+  /// "5 + 3 − 1" for display.
+  String get pretty =>
+      text.replaceAll('+', ' + ').replaceAll('-', ' − ').trim();
 }

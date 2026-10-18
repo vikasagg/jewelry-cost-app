@@ -173,23 +173,79 @@ class StockBook extends ChangeNotifier {
     return next;
   }
 
-  /// Sets the physical count of one item ([qty] null clears it).
-  Future<DailyStock> setCount(DailyStock d, String code, int? qty) async {
+  /// Sets the physical count of one item ([qty] null clears it), with the
+  /// keypad working that produced it (e.g. "5+3-1").
+  Future<DailyStock> setCount(
+    DailyStock d,
+    String code,
+    int? qty, {
+    String? expression,
+  }) async {
     _requireDraft(d);
     if (qty != null && qty < 0) {
       throw StockException('Count cannot be negative');
     }
     final before = d.counts[code];
-    if (before == qty) return d;
+    final working = qty == null ? null : expression;
+    if (before == qty && d.entries[code] == working) return d;
     final counts = {...d.counts};
+    final entries = {...d.entries};
     qty == null ? counts.remove(code) : counts[code] = qty;
+    working == null ? entries.remove(code) : entries[code] = working;
+    final shown = working != null && CountExpression(working).hasWorking
+        ? ' (${CountExpression(working).pretty})'
+        : '';
     final next = d
-        .copyWith(counts: counts)
+        .copyWith(counts: counts, entries: entries)
         .logged(
-          _event(_actor(d), 'Count', '$code: ${before ?? '—'} → ${qty ?? '—'}'),
+          _event(
+            _actor(d),
+            'Count',
+            '$code: ${before ?? '—'} → ${qty ?? '—'}$shown',
+          ),
         );
     await _save(next);
     return next;
+  }
+
+  // ------------------------------------------------------------ auto-save
+
+  static const _sessionKey = 'stock_session';
+
+  /// Saves a draft as it stands on screen (typed names, a sum still being
+  /// entered on the keypad) without adding audit entries — called every few
+  /// seconds so nothing is lost if the app is closed. Returns the save time.
+  Future<DateTime?> autosave(DailyStock d) async {
+    if (d.status != StockStatus.draft) return null;
+    final at = _clock();
+    await _store.put(
+      '$_dayPrefix${d.date}',
+      jsonEncode(d.copyWith(savedAt: at).toJson()),
+    );
+    await _store.put(
+      _sessionKey,
+      jsonEncode({'date': d.date, 'savedAt': at.toIso8601String()}),
+    );
+    if (d.employee.trim().isNotEmpty) {
+      await _store.put(_employeeKey, d.employee.trim());
+    }
+    notifyListeners();
+    return at;
+  }
+
+  /// The last auto-saved count session: its date and save time.
+  ({String date, DateTime savedAt})? get lastSession {
+    final raw = _store.get(_sessionKey);
+    if (raw == null) return null;
+    try {
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      return (
+        date: j['date'] as String,
+        savedAt: DateTime.parse(j['savedAt'] as String),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<DailyStock> setRemark(DailyStock d, String code, String text) async {

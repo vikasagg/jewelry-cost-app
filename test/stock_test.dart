@@ -291,4 +291,73 @@ void main() {
     );
     expect(state.stock.byDate(state.stock.today)!.employee, 'Ravi');
   });
+
+  test('keypad working: + and − add up left to right', () {
+    const e = CountExpression('5+3-1');
+    expect(e.terms, [5, 3, -1]);
+    expect(e.value, 7);
+    expect(e.pretty, '5 + 3 − 1');
+    expect(e.hasWorking, isTrue);
+    expect(const CountExpression('5+').isComplete, isFalse);
+    expect(const CountExpression('12').hasWorking, isFalse);
+  });
+
+  testWidgets('calculator entry, visible working, 3-second auto-save, date', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1080, 9000);
+    t.view.devicePixelRatio = 2.6;
+    addTearDown(t.view.reset);
+    now = DateTime(2026, 10, 18, 10);
+    final state = AppState(MemoryStore(), clock: clock);
+    await t.pumpWidget(JewelleryCostApp(state: state));
+    await t.tap(find.byKey(const Key('openStock')));
+    await t.pumpAndSettle();
+
+    // Pick an earlier date on the stock home.
+    await t.tap(find.byKey(const Key('stockHomeDate')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('17'));
+    await t.tap(find.text('OK'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('17 Oct 2026'), findsWidgets);
+    await t.tap(find.byKey(const Key('openTodayStock')));
+    await t.pumpAndSettle();
+
+    // 5 + 3 − 1 on the keypad: every entry and the total are shown.
+    await t.tap(find.byKey(const Key('count_LGR')));
+    await t.pumpAndSettle();
+    for (final k in ['5', '+', '3', '−', '1']) {
+      await t.tap(find.byKey(Key('key_$k')));
+      await t.pump();
+    }
+    expect(
+      (t.widget(find.byKey(const Key('keypadWorking'))) as Text).data,
+      '5 + 3 − 1',
+    );
+    expect(
+      (t.widget(find.byKey(const Key('keypadTotal'))) as Text).data,
+      '= 7',
+    );
+    await t.tap(find.byKey(const Key('keypadDone')));
+    await t.pumpAndSettle();
+    final day = state.stock.byDate('2026-10-17')!;
+    expect(day.counts['LGR'], 7);
+    expect(day.entries['LGR'], '5+3-1');
+    expect(
+      (t.widget(find.byKey(const Key('working_LGR'))) as Text).data,
+      '5 + 3 − 1 = 7',
+    );
+
+    // Typing is saved within 3 seconds, without leaving the field.
+    await t.enterText(find.byKey(const Key('stockEmployee')), 'Meena');
+    await t.pump(const Duration(seconds: 3));
+    await t.pump();
+    expect(state.stock.byDate('2026-10-17')!.employee, 'Meena');
+    expect(state.stock.lastSession!.date, '2026-10-17');
+    expect(
+      (t.widget(find.byKey(const Key('autosaveStatus'))) as Text).data,
+      startsWith('Auto-saved 18 Oct 2026'),
+    );
+  });
 }

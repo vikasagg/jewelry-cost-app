@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -32,9 +34,18 @@ class _StockCountScreenState extends State<StockCountScreen> {
   StockBook get _book => AppScope.read(context).stock;
   bool get _editable => _day.status == StockStatus.draft;
 
+  /// Auto-save interval.
+  static const autosaveEvery = Duration(seconds: 3);
+  Timer? _autosaveTimer;
+  late DateTime? _savedAt = _day.savedAt;
+
+  /// A sum still being typed on the keypad: (item code, working).
+  (String, String)? _live;
+
   @override
   void initState() {
     super.initState();
+    _autosaveTimer = Timer.periodic(autosaveEvery, (_) => _autosave());
     _employeeFocus.addListener(() {
       if (!_employeeFocus.hasFocus) _saveEmployee();
     });
@@ -43,8 +54,32 @@ class _StockCountScreenState extends State<StockCountScreen> {
     });
   }
 
+  /// Saves what is on screen — typed names and any sum still on the
+  /// keypad — so nothing is lost if the app closes.
+  Future<void> _autosave() async {
+    if (!_editable || !mounted) return;
+    var draft = _day.copyWith(
+      employee: _employee.text.trim(),
+      note: _note.text.trim(),
+    );
+    final live = _live;
+    if (live != null) {
+      final expr = CountExpression(live.$2);
+      final v = expr.value;
+      if (expr.isComplete && v != null && v >= 0) {
+        draft = draft.copyWith(
+          counts: {...draft.counts, live.$1: v},
+          entries: {...draft.entries, live.$1: live.$2},
+        );
+      }
+    }
+    final at = await _book.autosave(draft);
+    if (at != null && mounted) setState(() => _savedAt = at);
+  }
+
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     _employee.dispose();
     _note.dispose();
     _employeeFocus.dispose();
@@ -79,15 +114,47 @@ class _StockCountScreenState extends State<StockCountScreen> {
 
   Future<void> _enterCount(StockItem item) async {
     if (!_editable) return;
-    final v = await showNumericKeypad(
+    final count = _day.count(item.code);
+    final r = await showCountKeypad(
       context,
       title: item.group == item.name
           ? item.name
           : '${item.group} – ${item.code}',
       subtitle: '${item.name} · expected ${_day.expected(item.code)} pcs',
-      initial: _day.count(item.code),
+      initialExpression: _day.entries[item.code] ?? count?.toString(),
+      onChanged: (t) => _live = (item.code, t),
     );
-    if (v != null) await _do(() => _book.setCount(_day, item.code, v));
+    _live = null;
+    if (r != null) {
+      await _do(
+        () =>
+            _book.setCount(_day, item.code, r.value, expression: r.expression),
+      );
+    } else {
+      await _autosave(); // cancelled: put back what was there before
+    }
+  }
+
+  /// Opens the count for another date (from the date picker).
+  Future<void> _pickDate() async {
+    final current = StockBook.parseDate(_day.date);
+    final today = StockBook.parseDate(_book.today);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2020),
+      lastDate: today,
+      helpText: 'Stock count date',
+    );
+    if (picked == null || !mounted) return;
+    final key = StockBook.dateKey(picked);
+    if (key == _day.date) return;
+    await _autosave();
+    final day = await _book.open(key);
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => StockCountScreen(initial: day)),
+    );
   }
 
   Future<void> _editRemark(StockItem item) async {
@@ -228,6 +295,12 @@ class _StockCountScreenState extends State<StockCountScreen> {
         title: const Text('Stock Count'),
         actions: [
           IconButton(
+            key: const Key('stockPickDate'),
+            tooltip: 'Change date',
+            icon: const Icon(Icons.calendar_month_outlined),
+            onPressed: _pickDate,
+          ),
+          IconButton(
             tooltip: 'Share as text',
             icon: const Icon(Icons.share_outlined),
             onPressed: _shareText,
@@ -243,17 +316,49 @@ class _StockCountScreenState extends State<StockCountScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      stockDateLabel(d.date),
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+                    child: InkWell(
+                      key: const Key('stockDate'),
+                      onTap: _pickDate,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.event,
+                              size: 20,
+                              color: AppColors.goldDeep,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                stockDateLabel(d.date),
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_drop_down,
+                              color: AppColors.goldDeep,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                   StatusChip(status: d.status),
                 ],
               ),
+              if (_editable)
+                Text(
+                  _savedAt == null
+                      ? 'Auto-saves every ${autosaveEvery.inSeconds} seconds'
+                      : 'Auto-saved ${DateFormat('d MMM yyyy, h:mm:ss a').format(_savedAt!)}',
+                  key: const Key('autosaveStatus'),
+                  style: const TextStyle(color: AppColors.ok, fontSize: 12),
+                ),
               const SizedBox(height: 4),
               Text(
                 d.hasOpening
@@ -671,6 +776,17 @@ class _ItemRow extends StatelessWidget {
               ),
             ],
           ),
+          if (day.entries[item.code] case final w?
+              when CountExpression(w).hasWorking)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 6),
+              child: Text(
+                '${CountExpression(w).pretty} = ${count ?? '—'}',
+                key: Key('working_${item.code}'),
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 12, color: AppColors.muted),
+              ),
+            ),
           if (flagged || (remark ?? '').isNotEmpty)
             Row(
               children: [

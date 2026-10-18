@@ -30,8 +30,15 @@ prices or saved estimates, and it has its own history.
 
 - **Categories:** Ring (LGR, GGR), Earring (GE, DE), Pendant, Pendant Set,
   Necklace Set, Bangle, Tikka, Diamond Set, Chain, Chashma, Watch, Nath.
-  Counts are entered on a large numeric keypad; category (Ring, Earring)
-  and grand totals update live.
+  Counts are entered on a calculator keypad (digits, + and −, e.g.
+  5 + 3 + 2 − 1); every entry and the total show in the keypad, and the
+  working stays under the count on the main screen. Category (Ring,
+  Earring) and grand totals update live.
+- **Date:** pick the count date with the date picker (default today; past
+  dates allowed, future dates not).
+- **Auto-save:** an open draft is saved every 3 seconds, including typed
+  names and a sum still on the keypad; the last save time is shown, and
+  the stock home shows the last auto-saved session and its date.
 - **Reconciliation:** each line shows the previous day's *verified* closing,
   today's expected opening (that closing + approved adjustments), the
   physical count and the difference. Differences are highlighted and take a
