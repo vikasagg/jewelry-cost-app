@@ -34,19 +34,24 @@ Uint8List _crop((Uint8List, double, double, double, double) a) {
   final w = (a.$4 * image.width).round().clamp(1, image.width - x);
   final h = (a.$5 * image.height).round().clamp(1, image.height - y);
   return Uint8List.fromList(
-    img.encodePng(img.copyCrop(image, x: x, y: y, width: w, height: h)),
+    _png(img.copyCrop(image, x: x, y: y, width: w, height: h)),
   );
 }
 
 Uint8List _rotate((Uint8List, int) args) {
   final image = img.decodeImage(args.$1);
   if (image == null) throw const FormatException('Unsupported image format');
-  return Uint8List.fromList(
-    img.encodePng(img.copyRotate(image, angle: args.$2)),
-  );
+  return Uint8List.fromList(_png(img.copyRotate(image, angle: args.$2)));
 }
 
-const _maxSide = 2000;
+/// Longest side kept: enough for OCR on a phone photo of a tag, and small
+/// enough to process quickly.
+const _maxSide = 1600;
+
+/// Fast PNG for images passed between steps (light compression, no filter):
+/// encoding dominated the processing time at the default settings.
+Uint8List _png(img.Image image) =>
+    img.encodePng(image, level: 1, filter: img.PngFilter.none);
 
 img.Image _decode(Uint8List bytes) {
   final decoded = img.decodeImage(bytes);
@@ -70,7 +75,7 @@ img.Image _decode(Uint8List bytes) {
 }
 
 Uint8List _normalise(Uint8List bytes) =>
-    Uint8List.fromList(img.encodePng(_decode(bytes)));
+    Uint8List.fromList(_png(_decode(bytes)));
 
 Uint8List _enhance(Uint8List bytes) {
   var image = _decode(bytes);
@@ -88,5 +93,5 @@ Uint8List _enhance(Uint8List bytes) {
   image = img.normalize(image, min: 0, max: 255);
   image = img.adjustColor(image, contrast: 1.25);
   image = img.convolution(image, filter: [0, -1, 0, -1, 5, -1, 0, -1, 0]);
-  return Uint8List.fromList(img.encodePng(image));
+  return Uint8List.fromList(_png(image));
 }

@@ -5,28 +5,27 @@ import 'package:web/web.dart' as web;
 
 import 'ocr_service.dart';
 
-OcrService createOcrService() => TesseractOcrService();
+OcrService createOcrService() => PaddleOcrService();
 
-@JS('Tesseract')
-external JSObject? get _tesseractGlobal;
-
-/// Defined in web/index.html; wraps a reusable Tesseract.js worker.
+/// Defined in web/index.html; runs PaddleOCR (see tool/web_ocr/entry.js).
 @JS('jcRecognize')
 external JSPromise<JSString> _recognize(JSString imageUrl);
 
-/// In-browser OCR using Tesseract.js (loaded from web/index.html).
-class TesseractOcrService implements OcrService {
+/// In-browser OCR with PaddleOCR on ONNX Runtime Web. Finds text regions
+/// first, so photo backgrounds are ignored, and corrects sideways or
+/// upside-down tags itself.
+class PaddleOcrService implements OcrService {
   @override
-  String get engineName => 'Tesseract.js (browser)';
+  String get engineName => 'PaddleOCR (browser)';
+
+  @override
+  bool get handlesRotation => true;
+
+  @override
+  bool get needsEnhancement => false;
 
   @override
   Future<String> recognize(Uint8List imageBytes) async {
-    if (_tesseractGlobal == null) {
-      throw OcrException(
-        'OCR engine could not be loaded. Connect to the internet for the '
-        'first scan (or bundle OCR assets), or enter details manually.',
-      );
-    }
     final blob = web.Blob(
       [imageBytes.toJS].toJS,
       web.BlobPropertyBag(type: 'image/png'),
@@ -34,6 +33,11 @@ class TesseractOcrService implements OcrService {
     final url = web.URL.createObjectURL(blob);
     try {
       return (await _recognize(url.toJS).toDart).toDart;
+    } catch (e) {
+      throw OcrException(
+        'The text reader could not run ($e). Check the internet connection '
+        'for the first scan, or enter details manually.',
+      );
     } finally {
       web.URL.revokeObjectURL(url);
     }

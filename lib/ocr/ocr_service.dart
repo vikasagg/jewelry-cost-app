@@ -8,10 +8,17 @@ import 'ocr_service_stub.dart'
 /// Recognises printed text in an image.
 abstract class OcrService {
   /// Platform-appropriate implementation: ML Kit (on-device) on Android/iOS,
-  /// Tesseract.js (in-browser) on web.
+  /// PaddleOCR (in-browser) on web.
   factory OcrService() => impl.createOcrService();
 
   String get engineName;
+
+  /// True when the engine itself copes with sideways/upside-down images,
+  /// so the caller need not retry other rotations.
+  bool get handlesRotation;
+
+  /// Whether greyscale/contrast/sharpen pre-processing helps this engine.
+  bool get needsEnhancement;
 
   /// Returns the recognised text, line by line.
   Future<String> recognize(Uint8List imageBytes);

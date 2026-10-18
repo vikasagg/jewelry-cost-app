@@ -60,6 +60,16 @@ class PricingDefaultsRepository {
   /// GST % pre-filled on every new item (editable per item).
   static const defaultGstPercent = 3.0;
 
+  /// Purity used when the tag does not print one.
+  static const defaultPurity = Purity.k18;
+
+  /// Rate filled in when staff add a line by hand (₹/ct). Stones have no
+  /// default: their per-piece rate varies too much.
+  static const manualLineRate = {
+    StoneKind.diamond: 70000.0,
+    StoneKind.polki: 70000.0,
+  };
+
   /// Prefix of the automatic tag number, e.g. DJ-0001.
   static const tagPrefix = 'DJ-';
 
@@ -106,12 +116,11 @@ class PricingDefaultsRepository {
 
   /// A clean new item: GST 3%, making per gram (empty), and for manual
   /// entry one empty diamond and one empty stone line.
+  /// A new item: 18K, no diamond/stone/polki lines (they are added only
+  /// when the tag lists them or staff tap Add).
   JewelleryInput load() => const JewelleryInput(
+    purity: defaultPurity,
     gst: GstConfig(ratePercent: defaultGstPercent),
-    stones: [
-      StoneLine(kind: StoneKind.diamond),
-      StoneLine(kind: StoneKind.stone),
-    ],
   );
 }
 

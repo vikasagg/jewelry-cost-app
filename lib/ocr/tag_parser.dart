@@ -277,7 +277,12 @@ class TagParser {
         .replaceAll('：', ':')
         // Stray glyphs OCR often inserts next to units (e.g. "10.50 ¢g").
         // Replaced with spaces so string indices stay aligned.
-        .replaceAll(RegExp('[¢©®°«»‘’“”]'), ' ');
+        .replaceAll(RegExp('[¢©®°«»‘’“”]'), ' ')
+        // A 3-decimal weight run into the purity ("6.41014K" → "6.410 14K").
+        .replaceAllMapped(
+          RegExp(r'(\d\.\d{3})(9|14|18|20|22|24)(\s*K)', caseSensitive: false),
+          (m) => '${m[1]} ${m[2]}${m[3]}',
+        );
     final consumed = <List<int>>[];
     String visible() {
       final chars = text.split('');

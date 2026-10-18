@@ -100,8 +100,16 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     if (parsed != null) {
       _uncertain.addAll(parsed.uncertainFields);
       _missing.addAll(parsed.missingRequired);
+      // No purity on the tag: the shop default (18K) is preselected.
+      if (!parsed.purity.isFound && _purity != null) {
+        _missing.remove('purity');
+        _purityDefaulted = true;
+      }
     }
   }
+
+  /// True while the purity is the shop default because the tag had none.
+  bool _purityDefaulted = false;
 
   void _load(JewelleryInput i) {
     _c['itemName']!.text = i.itemName ?? '';
@@ -183,6 +191,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
       _errors.remove(key);
       _uncertain.remove(key);
       _missing.remove(key);
+      if (key == 'purity') _purityDefaulted = false;
       if (key == 'makingValue') {
         _makingAuto = false; // staff typed their own labour charge
       } else if (key.startsWith('stone.')) {
@@ -251,7 +260,12 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     setState(() {
       _stones.add(
         _StoneRow.from(
-          StoneLine(kind: kind, ratePerCt: state.stoneRateFor(kind, null)),
+          StoneLine(
+            kind: kind,
+            ratePerCt:
+                state.stoneRateFor(kind, null) ??
+                PricingDefaultsRepository.manualLineRate[kind],
+          ),
         ),
       );
     });
@@ -470,6 +484,15 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                   },
                 ),
               ),
+              if (_purityDefaulted)
+                const Padding(
+                  key: Key('purityDefaultHint'),
+                  padding: EdgeInsets.only(left: 4, top: 4),
+                  child: Text(
+                    'Purity not printed on the tag — 18K selected by default',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
+                ),
               if (_stateOf('purity') != FieldState.normal)
                 FlagNote(
                   state: _stateOf('purity'),
@@ -567,22 +590,24 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                 const SizedBox(height: 4),
               ],
               _weightBalance(),
-              _excludeSwitch(
-                'Exclude diamond value',
-                _excludeDiamond,
-                (v) => setState(() {
-                  _excludeDiamond = v;
-                  _errors.removeWhere((k, _) => k.endsWith('.rate'));
-                }),
-              ),
-              _excludeSwitch(
-                'Exclude stone value',
-                _excludeStone,
-                (v) => setState(() {
-                  _excludeStone = v;
-                  _errors.removeWhere((k, _) => k.endsWith('.rate'));
-                }),
-              ),
+              if (_stones.any((r) => r.kind == StoneKind.diamond))
+                _excludeSwitch(
+                  'Exclude diamond value',
+                  _excludeDiamond,
+                  (v) => setState(() {
+                    _excludeDiamond = v;
+                    _errors.removeWhere((k, _) => k.endsWith('.rate'));
+                  }),
+                ),
+              if (_stones.any((r) => r.kind == StoneKind.stone))
+                _excludeSwitch(
+                  'Exclude stone value',
+                  _excludeStone,
+                  (v) => setState(() {
+                    _excludeStone = v;
+                    _errors.removeWhere((k, _) => k.endsWith('.rate'));
+                  }),
+                ),
 
               // ------------------------------------------------ pricing inputs
               const SizedBox(height: 14),
@@ -735,6 +760,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
                   ),
                 ),
                 IconButton(
+                  key: Key('removeStone_$i'),
                   tooltip: 'Remove line',
                   icon: const Icon(Icons.close, size: 20),
                   onPressed: () => _removeStone(i),
