@@ -12,7 +12,6 @@ import 'details_form_screen.dart';
 import 'history_screen.dart';
 import 'rate_setup_screen.dart';
 import 'scan_screen.dart';
-import 'stock/stock_home_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -114,14 +113,6 @@ class DashboardScreen extends StatelessWidget {
                 title: 'New Bill',
                 subtitle: 'Pick scanned products and bill the customer',
                 onTap: () => startBill(context),
-              ),
-              const SizedBox(height: 10),
-              MenuTile(
-                key: const Key('dailyStockSummary'),
-                icon: Icons.inventory_2_outlined,
-                title: 'Daily Stock Summary',
-                subtitle: 'Count stock and share the daily report',
-                onTap: () => _open(context, const StockHomeScreen()),
               ),
             ],
           ),
