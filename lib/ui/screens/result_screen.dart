@@ -577,16 +577,17 @@ class _RatesUsedCard extends StatelessWidget {
             minTileWidth: 140,
             children: [
               for (final p in Purity.values)
-                StatTile(
-                  label:
-                      p.label +
-                      (current != null &&
-                              current!.rateFor(p) != rates.rateFor(p)
-                          ? ' (now ${formatInr(current!.rateFor(p) ?? 0)})'
-                          : ''),
-                  value: formatInr(rates.rateFor(p) ?? 0),
-                  highlight: p == highlight,
-                ),
+                if (rates.rateFor(p) != null)
+                  StatTile(
+                    label:
+                        p.label +
+                        (current != null &&
+                                current!.rateFor(p) != rates.rateFor(p)
+                            ? ' (now ${formatInr(current!.rateFor(p) ?? 0)})'
+                            : ''),
+                    value: formatInr(rates.rateFor(p) ?? 0),
+                    highlight: p == highlight,
+                  ),
             ],
           ),
         ],

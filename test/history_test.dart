@@ -42,11 +42,37 @@ void main() {
     final store = MemoryStore();
     final s1 = AppState(store);
     expect(s1.hasRates, isFalse);
-    await s1.saveRates(ratesAt(5300, day1));
+    await s1.saveRates(GoldRates.fromBase24(perGram24: 10000, updatedAt: day1));
     final s2 = AppState(store);
     expect(s2.hasRates, isTrue);
-    expect(s2.rates!.rateFor(Purity.k18), 5300);
+    expect(s2.rates!.rateFor(Purity.k24), 10000);
+    expect(s2.rates!.rateFor(Purity.k18), 7600);
     expect(s2.rates!.updatedAt, day1);
+  });
+
+  test('every purity is derived from the 24K rate', () {
+    final r = GoldRates.fromBase24(perGram24: 10000, updatedAt: day1);
+    expect(
+      {for (final p in Purity.values) p: r.rateFor(p)},
+      {
+        Purity.k9: 4000,
+        Purity.k14: 6000,
+        Purity.k18: 7600,
+        Purity.k20: 8400,
+        Purity.k22: 9200,
+        Purity.k24: 10000,
+      },
+    );
+  });
+
+  test('rates saved before derivation are re-derived from 24K', () async {
+    final store = MemoryStore();
+    await AppState(store).saveRates(ratesAt(5300, day1)); // old 4-purity save
+    final s = AppState(store);
+    expect(s.hasRates, isTrue);
+    expect(s.rates!.rateFor(Purity.k24), 7000);
+    expect(s.rates!.rateFor(Purity.k22), 6440);
+    expect(s.rates!.rateFor(Purity.k9), 2800);
   });
 
   test('changing gold rates does not alter historical calculations', () async {

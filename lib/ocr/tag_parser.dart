@@ -633,9 +633,9 @@ class TagParser {
     final sources = <String>[];
     var reasons = <String>[];
 
-    // Explicit karat: "18K", "18 KT", "22KARAT", "Purity: 18K", "22K916".
+    // Explicit karat: "18K", "18 KT", "22KARAT", "Purity: 18K", "22K916", "9K".
     final karatRe = RegExp(
-      r'(?<![0-9A-Z.,])([0-9OoIl]{2})\s*(?:K|KT|KARAT|KARATS|CARAT\s+GOLD)(?![A-Z])',
+      r'(?<![0-9A-Z.,])([0-9OoIl]{2}|9)\s*(?:K|KT|KARAT|KARATS|CARAT\s+GOLD)(?![A-Z])',
       caseSensitive: false,
     );
     for (final m in karatRe.allMatches(text)) {
@@ -652,7 +652,7 @@ class TagParser {
     // "Purity: 18" / "KT: 22" without a K suffix.
     if (found.isEmpty) {
       final labelRe = RegExp(
-        r'(?:PURITY|KARAT|KT|CARATAGE)\s*[:\-=]?\s*([0-9]{2,3})(?![0-9.])',
+        r'(?:PURITY|KARAT|KT|CARATAGE)\s*[:\-=]?\s*([0-9]{1,3})(?![0-9.])',
         caseSensitive: false,
       );
       for (final m in labelRe.allMatches(text)) {
@@ -668,9 +668,11 @@ class TagParser {
       }
     }
 
-    // Hallmark fineness only (916, 750, 585, 999). Lowest priority.
+    // Hallmark fineness only (916, 833, 750, 585, 375, 999). Lowest priority.
     if (found.isEmpty) {
-      final finRe = RegExp(r'(?<![0-9.,])(585|583|750|916|995|999)(?![0-9.,])');
+      final finRe = RegExp(
+        r'(?<![0-9.,])(375|585|583|750|833|916|995|999)(?![0-9.,])',
+      );
       for (final m in finRe.allMatches(text)) {
         final p = Purity.fromFineness(int.parse(m.group(1)!));
         if (p == null) continue;
