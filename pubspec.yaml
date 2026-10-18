@@ -70,6 +70,28 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Inter (text) and Playfair Display (brand title), SIL Open Font
+  # License — see assets/fonts/OFL-*.txt. Bundled so the app looks the
+  # same offline.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter_400Regular.ttf
+        - asset: assets/fonts/Inter_500Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter_600SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter_700Bold.ttf
+          weight: 700
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay_500Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlayfairDisplay_600SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlayfairDisplay_700Bold.ttf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

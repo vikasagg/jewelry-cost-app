@@ -22,13 +22,16 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: ResponsiveBody(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 36, 20, 24),
             children: [
-              const BrandHeader(
-                subtitle: 'Choose what you want to do',
-                size: 48,
+              const BrandLogo(size: 34, stacked: true),
+              const SizedBox(height: 8),
+              const Text(
+                'Calculate  •  Count  •  Share',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.muted, fontSize: 15),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 32),
               _ModeCard(
                 key: const Key('openPriceCalculator'),
                 icon: Icons.calculate_outlined,
@@ -70,54 +73,39 @@ class _ModeCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.white,
-    elevation: 1,
-    shadowColor: AppColors.gold.withValues(alpha: 0.3),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(20),
-      side: const BorderSide(color: AppColors.line),
-    ),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: AppColors.goldSoft,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon, size: 32, color: AppColors.goldDeep),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: AppColors.muted),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: AppColors.goldDeep),
-          ],
+  Widget build(BuildContext context) => GoldCard(
+    onTap: onTap,
+    padding: const EdgeInsets.all(18),
+    child: Row(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, size: 30),
         ),
-      ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(subtitle, style: const TextStyle(color: Color(0xFFF7EEDB))),
+            ],
+          ),
+        ),
+        const Icon(Icons.chevron_right),
+      ],
     ),
   );
 }

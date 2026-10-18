@@ -194,17 +194,78 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                   final v = parseNumber(_rate24.text);
                   final ok = v != null && !v.isNaN && v > 0;
                   final unit = _perGrams == 1 ? 'g' : '$_perGrams g';
-                  return TileGrid(
+                  return Column(
                     key: const Key('derivedRates'),
-                    minTileWidth: 140,
                     children: [
                       for (final p in Purity.values.reversed)
-                        StatTile(
-                          label: '${p.label} (${p.percentOf24}%) per $unit',
-                          value: ok
-                              ? formatInr((v * p.percentOf24).round() / 100)
-                              : '—',
-                          highlight: p == Purity.k24,
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              // Purity chip, as in the design.
+                              Container(
+                                width: 64,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.goldSoft,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      p.label,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.goldDeep,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${p.percentOf24}%',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: p == Purity.k24
+                                        ? AppColors.surface
+                                        : AppColors.tile,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: AppColors.line),
+                                  ),
+                                  child: Text(
+                                    ok
+                                        ? formatInr(
+                                            (v * p.percentOf24).round() / 100,
+                                          )
+                                        : '—',
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'per $unit',
+                                style: const TextStyle(color: AppColors.muted),
+                              ),
+                            ],
+                          ),
                         ),
                     ],
                   );

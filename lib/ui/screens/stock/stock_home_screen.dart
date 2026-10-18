@@ -181,54 +181,50 @@ class _TodayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = day;
-    return Material(
-      color: AppColors.gold,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        key: const Key('openTodayStock'),
-        borderRadius: BorderRadius.circular(20),
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.inventory_2_outlined,
-                color: Colors.white,
-                size: 34,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${d == null
-                          ? 'Start'
-                          : d.status == StockStatus.draft
-                          ? 'Continue'
-                          : 'Open'} ${isToday ? 'today\'s' : 'this day\'s'} count',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w700,
-                      ),
+    return GoldCard(
+      key: const Key('openTodayStock'),
+      onTap: onOpen,
+      padding: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.inventory_2_outlined,
+              color: Colors.white,
+              size: 34,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${d == null
+                        ? 'Start'
+                        : d.status == StockStatus.draft
+                        ? 'Continue'
+                        : 'Open'} ${isToday ? 'today\'s' : 'this day\'s'} count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      d == null
-                          ? stockDateLabel(date)
-                          : '${stockDateLabel(date)} · ${d.status.label}\n'
-                                'Physical ${d.totalCount} · '
-                                '${differenceLabel(d.totalDifference)}',
-                      style: const TextStyle(color: Color(0xFFF7EEDB)),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    d == null
+                        ? stockDateLabel(date)
+                        : '${stockDateLabel(date)} · ${d.status.label}\n'
+                              'Physical ${d.totalCount} · '
+                              '${differenceLabel(d.totalDifference)}',
+                    style: const TextStyle(color: Color(0xFFF7EEDB)),
+                  ),
+                ],
               ),
-              const Icon(Icons.chevron_right, color: Colors.white),
-            ],
-          ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white),
+          ],
         ),
       ),
     );
