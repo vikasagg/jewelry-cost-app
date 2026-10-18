@@ -20,10 +20,9 @@ class RateSetupScreen extends StatefulWidget {
 }
 
 class _RateSetupScreenState extends State<RateSetupScreen> {
-  final _controllers = {
-    for (final p in Purity.values) p: TextEditingController(),
-  };
-  final _errors = <Purity, String?>{};
+  /// Only the 24K rate is entered; the other purities are derived from it.
+  final _rate24 = TextEditingController();
+  String? _rateError;
   final _multipliers = {
     for (final k in StoneKind.values) k: TextEditingController(),
   };
@@ -48,17 +47,13 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     final rates = AppScope.read(context).rates;
     if (rates != null) {
       _perGrams = rates.quotedPerGrams;
-      for (final p in Purity.values) {
-        _controllers[p]!.text = formatInput(rates.quotedRateFor(p));
-      }
+      _rate24.text = formatInput(rates.quotedRateFor(Purity.k24));
     }
   }
 
   @override
   void dispose() {
-    for (final c in _controllers.values) {
-      c.dispose();
-    }
+    _rate24.dispose();
     for (final c in _multipliers.values) {
       c.dispose();
     }
@@ -75,11 +70,7 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
   }
 
   Future<void> _save() async {
-    setState(() {
-      for (final p in Purity.values) {
-        _errors[p] = _validate(_controllers[p]!.text);
-      }
-    });
+    setState(() => _rateError = _validate(_rate24.text));
     final m = {
       for (final k in StoneKind.values) k: parseNumber(_multipliers[k]!.text),
     };
@@ -91,17 +82,13 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
             : null;
       }
     });
-    if (_errors.values.any((e) => e != null) ||
-        _multiplierErrors.values.any((e) => e != null)) {
+    if (_rateError != null || _multiplierErrors.values.any((e) => e != null)) {
       return;
     }
     setState(() => _saving = true);
     final state = AppScope.read(context);
-    final rates = GoldRates(
-      perGram: {
-        for (final p in Purity.values)
-          p: parseNumber(_controllers[p]!.text)! / _perGrams,
-      },
+    final rates = GoldRates.fromBase24(
+      perGram24: parseNumber(_rate24.text)! / _perGrams,
       updatedAt: state.now(),
       quotedPerGrams: _perGrams,
     );
@@ -146,9 +133,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Enter today\'s rate in ₹ for each purity. Weights are entered '
-                'in grams exactly as printed on the tag; the app converts the '
-                'rate to per gram. No extra purity adjustment is applied.',
+                'Enter today\'s 24K rate in ₹. The other purities are worked '
+                'out from it: 22K = 92%, 20K = 84%, 18K = 76%, 14K = 60%, '
+                '9K = 40% of the 24K rate.',
                 style: TextStyle(color: AppColors.muted, height: 1.4),
               ),
               if (rates != null) ...[
@@ -193,33 +180,51 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              for (final p in Purity.values) ...[
-                NumberField(
-                  fieldKey: Key('rate_${p.name}'),
-                  controller: _controllers[p]!,
-                  label: '${p.label} Gold rate',
-                  prefix: '₹ ',
-                  unit: _perGrams == 1 ? '/ gram' : '/ $_perGrams g',
-                  errorText: _errors[p],
-                  onChanged: (_) {
-                    if (_errors[p] != null) setState(() => _errors[p] = null);
-                  },
-                ),
-                if (rates?.rateFor(p) != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4, top: 4),
-                    child: Text(
-                      'Saved: ${formatInr(rates!.quotedRateFor(p)!)} / '
-                      '${rates.quoteUnit}'
-                      '${rates.quotedPerGrams == 1 ? '' : ' (${formatInr(rates.rateFor(p)!)}/g)'}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.muted,
-                      ),
+              NumberField(
+                fieldKey: const Key('rate_k24'),
+                controller: _rate24,
+                label: '24K Gold rate',
+                prefix: '₹ ',
+                unit: _perGrams == 1 ? '/ gram' : '/ $_perGrams g',
+                errorText: _rateError,
+                onChanged: (_) => setState(() => _rateError = null),
+              ),
+              const SizedBox(height: 10),
+              Builder(
+                builder: (_) {
+                  final v = parseNumber(_rate24.text);
+                  final ok = v != null && !v.isNaN && v > 0;
+                  final unit = _perGrams == 1 ? 'g' : '$_perGrams g';
+                  return TileGrid(
+                    key: const Key('derivedRates'),
+                    minTileWidth: 140,
+                    children: [
+                      for (final p in Purity.values.reversed)
+                        StatTile(
+                          label: '${p.label} (${p.percentOf24}%) per $unit',
+                          value: ok
+                              ? formatInr((v * p.percentOf24).round() / 100)
+                              : '—',
+                          highlight: p == Purity.k24,
+                        ),
+                    ],
+                  );
+                },
+              ),
+              if (rates != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, top: 6),
+                  child: Text(
+                    'Saved 24K: ${formatInr(rates.quotedRateFor(Purity.k24)!)} / '
+                    '${rates.quoteUnit}'
+                    '${rates.quotedPerGrams == 1 ? '' : ' (${formatInr(rates.rateFor(Purity.k24)!)}/g)'}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.muted,
                     ),
                   ),
-                const SizedBox(height: 14),
-              ],
+                ),
+              const SizedBox(height: 14),
               const SizedBox(height: 8),
               const Text(
                 'Rates printed on tags',

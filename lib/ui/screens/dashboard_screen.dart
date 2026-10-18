@@ -115,7 +115,7 @@ class DashboardScreen extends StatelessWidget {
                 TileGrid(
                   minTileWidth: 140,
                   children: [
-                    for (final p in Purity.values)
+                    for (final p in Purity.values.reversed)
                       StatTile(
                         label: '${p.label} per ${rates.quoteUnit}',
                         value: formatInr(rates.quotedRateFor(p) ?? 0),

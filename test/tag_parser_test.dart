@@ -24,6 +24,10 @@ void main() {
       '22K916': Purity.k22,
       '18 K': Purity.k18,
       'kt: 14': Purity.k14,
+      '9K': Purity.k9,
+      'Purity: 9KT': Purity.k9,
+      '20K': Purity.k20,
+      '20 KT 833': Purity.k20,
     };
     cases.forEach((text, purity) {
       test('"$text" -> ${purity.label}', () {
@@ -39,6 +43,8 @@ void main() {
         '916': Purity.k22,
         '585': Purity.k14,
         '999': Purity.k24,
+        '833': Purity.k20,
+        '375': Purity.k9,
       }.entries) {
         final p = parser.parse('Ring\n${e.key}').purity;
         expect(p.value, e.value);

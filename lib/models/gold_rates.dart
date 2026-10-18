@@ -8,6 +8,21 @@ class GoldRates {
     this.quotedPerGrams = 1,
   });
 
+  /// Rates for every purity derived from the 24K rate per gram, using
+  /// [Purity.percentOf24] (22K = 92%, 20K = 84%, 18K = 76%, 14K = 60%,
+  /// 9K = 40%).
+  factory GoldRates.fromBase24({
+    required double perGram24,
+    required DateTime updatedAt,
+    int quotedPerGrams = 1,
+  }) => GoldRates(
+    perGram: {
+      for (final p in Purity.values) p: perGram24 * p.percentOf24 / 100,
+    },
+    updatedAt: updatedAt,
+    quotedPerGrams: quotedPerGrams,
+  );
+
   /// Rates per **1 gram**; always what pricing uses.
   final Map<Purity, double> perGram;
   final DateTime updatedAt;

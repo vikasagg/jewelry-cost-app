@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/calculation_record.dart';
 import '../models/gold_rates.dart';
 import '../models/jewellery_input.dart';
+import '../models/purity.dart';
 import 'key_value_store.dart';
 
 /// Persists the current gold rates.
@@ -15,7 +16,16 @@ class RatesRepository {
     final raw = _store.get(_key);
     if (raw == null) return null;
     try {
-      return GoldRates.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final saved = GoldRates.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final base = saved.rateFor(Purity.k24);
+      if (base == null || base <= 0) return null;
+      // Other purities always follow the 24K rate, including rates saved
+      // before they were derived.
+      return GoldRates.fromBase24(
+        perGram24: base,
+        updatedAt: saved.updatedAt,
+        quotedPerGrams: saved.quotedPerGrams,
+      );
     } catch (_) {
       return null;
     }

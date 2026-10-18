@@ -10,8 +10,10 @@ StoneLine stn(double? w, double? r) =>
     StoneLine(kind: StoneKind.stone, label: 'Stone', weightCt: w, ratePerCt: r);
 
 const rates = {
+  Purity.k9: 2800.0,
   Purity.k14: 4100.0,
   Purity.k18: 5300.0,
+  Purity.k20: 5880.0,
   Purity.k22: 6450.0,
   Purity.k24: 7000.0,
 };

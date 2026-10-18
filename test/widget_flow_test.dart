@@ -50,21 +50,26 @@ void main() {
 
     // Validation: empty + negative
     await tapKey(t, 'saveRates');
-    expect(find.text('Required'), findsNWidgets(4));
+    expect(find.text('Required'), findsOneWidget);
+    // Only the 24K rate is entered.
+    expect(find.byKey(const Key('rate_k22')), findsNothing);
 
     // Rates are entered per 10 g by default and stored per gram.
-    await enter(t, 'rate_k14', '41000');
-    await enter(t, 'rate_k18', '70000');
-    await enter(t, 'rate_k22', '64500');
     await enter(t, 'rate_k24', '0');
     await tapKey(t, 'saveRates');
     expect(find.text('Must be greater than 0'), findsOneWidget);
-    await enter(t, 'rate_k24', '77000');
+    await enter(t, 'rate_k24', '92105.26');
+    // Derived rates are previewed before saving (18K = 76%).
+    expect(find.text('₹70,000.00'), findsOneWidget);
     await tapKey(t, 'saveRates');
 
     expect(find.text('Scan Jewellery Tag'), findsOneWidget);
     expect(find.text('₹70,000.00'), findsOneWidget); // 18K per 10 g
-    expect(state.rates!.rateFor(Purity.k18), 7000); // per gram internally
+    expect(state.rates!.rateFor(Purity.k18), closeTo(7000, 0.001));
+    expect(state.rates!.rateFor(Purity.k22), closeTo(8473.68, 0.01));
+    expect(state.rates!.rateFor(Purity.k20), closeTo(7736.84, 0.01));
+    expect(state.rates!.rateFor(Purity.k14), closeTo(5526.32, 0.01));
+    expect(state.rates!.rateFor(Purity.k9), closeTo(3684.21, 0.01));
 
     expect(find.byKey(const Key('historyButton')), findsOneWidget);
     await tapKey(t, 'manualEntry');
