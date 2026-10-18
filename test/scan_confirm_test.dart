@@ -140,6 +140,38 @@ void main() {
     expect(state.imageFor(saved.id), isNull);
   });
 
+  testWidgets('second photo adds the labour; Remove takes it back out', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1080, 7000);
+    t.view.devicePixelRatio = 2.6;
+    addTearDown(t.view.reset);
+    final state = AppState(MemoryStore());
+    await t.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          theme: buildTheme(),
+          home: ScanScreen(
+            initialImage: pixel,
+            initialResult: const TagParser().parse('N.Wt 4.000 g 18K'),
+            initialSecondImage: pixel,
+            initialSecondResult: const TagParser().parse('LBR : 1200'),
+          ),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('secondPhoto')), findsOneWidget);
+    expect(fieldText(t, 'field_makingValue'), '1200');
+
+    await t.tap(find.byKey(const Key('removeSecondPhoto')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('secondPhoto')), findsNothing);
+    expect(find.byKey(const Key('field_makingValue')), findsNothing);
+    expect(find.byKey(const Key('addSecondPhoto')), findsOneWidget);
+  });
+
   test('confirm() re-checks the weight balance with corrected values', () {
     final p = const TagParser().parse(
       'G.Wt:6.410 14K\nN.Wt:5.886\nDIA\\0.38\\700\nDIA\\0.11\\750',

@@ -16,13 +16,25 @@ import 'details_form_screen.dart';
 
 /// Capture → crop → enhance → OCR → review detected fields.
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key, this.initialImage, this.initialResult});
+  const ScanScreen({
+    super.key,
+    this.initialImage,
+    this.initialResult,
+    this.initialSecondImage,
+    this.initialSecondResult,
+  });
 
   /// Tests only: start on the review step with this image and OCR result.
   @visibleForTesting
   final Uint8List? initialImage;
   @visibleForTesting
   final ParsedTag? initialResult;
+
+  /// Tests only: a second photo already read and merged in.
+  @visibleForTesting
+  final Uint8List? initialSecondImage;
+  @visibleForTesting
+  final ParsedTag? initialSecondResult;
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -41,6 +53,11 @@ class _ScanScreenState extends State<ScanScreen> {
 
   /// Image sent to OCR (cropped/rotated).
   Uint8List? _preview;
+
+  /// Optional second photo of the tag (e.g. the labour/LBR side), and the
+  /// reading before it was merged in (to undo).
+  Uint8List? _preview2;
+  ParsedTag? _beforeSecond;
   bool _enhance = true;
   bool _busy = false;
   String? _status;
@@ -53,6 +70,12 @@ class _ScanScreenState extends State<ScanScreen> {
     super.initState();
     _preview = widget.initialImage;
     _parsed = widget.initialResult;
+    final second = widget.initialSecondResult;
+    if (_parsed != null && second != null) {
+      _beforeSecond = _parsed;
+      _preview2 = widget.initialSecondImage;
+      _parsed = _parsed!.mergeWith(second);
+    }
     if (_parsed != null) _fillFields(_parsed!);
   }
 
@@ -65,7 +88,9 @@ class _ScanScreenState extends State<ScanScreen> {
     super.dispose();
   }
 
-  Future<void> _capture(ImageSource source) async {
+  /// Takes or chooses a photo; returns it orientation-normalised, or null
+  /// when cancelled or unreadable (with the reason shown).
+  Future<Uint8List?> _pickImage(ImageSource source) async {
     _lastSource = source;
     setState(() {
       _error = null;
@@ -83,7 +108,7 @@ class _ScanScreenState extends State<ScanScreen> {
       );
     } on PlatformException catch (e) {
       setState(() => _status = null);
-      if (!mounted) return;
+      if (!mounted) return null;
       if (e.code.contains('access_denied') || e.code.contains('permission')) {
         await _showPermissionHelp(source);
       } else {
@@ -92,29 +117,36 @@ class _ScanScreenState extends State<ScanScreen> {
               _error = 'Could not open ${source.name}: ${e.message ?? e.code}',
         );
       }
-      return;
+      return null;
     } catch (e) {
       setState(() {
         _status = null;
         _error = 'Could not open ${source.name}: $e';
       });
-      return;
+      return null;
     }
     if (file == null) {
       setState(() => _status = null);
-      return;
+      return null;
     }
-
     setState(() => _status = 'Preparing image…');
     try {
-      _original = await _enhancer.normalise(await file.readAsBytes());
+      return await _enhancer.normalise(await file.readAsBytes());
     } catch (e) {
       setState(() {
         _status = null;
         _error = 'This image could not be read. Try another photo.';
       });
-      return;
+      return null;
     }
+  }
+
+  Future<void> _capture(ImageSource source) async {
+    final image = await _pickImage(source);
+    if (image == null) return;
+    _original = image;
+    _preview2 = null; // a new first photo starts a new tag
+    _beforeSecond = null;
     await _cropAndScan();
   }
 
@@ -131,43 +163,59 @@ class _ScanScreenState extends State<ScanScreen> {
     await _runOcr();
   }
 
-  /// Runs OCR. With [autoRotate], a sideways or upside-down photo is
-  /// detected by also trying 90°/270°/180° when the first pass finds too
-  /// little, keeping the orientation whose text yields the most fields
-  /// (engines that correct orientation themselves need only one pass).
+  /// Reads one photo. With [autoRotate], a sideways or upside-down photo
+  /// is detected by also trying 90°/270°/180° until [enough] is met,
+  /// keeping the orientation whose text yields the most fields (engines
+  /// that correct orientation themselves need only one pass).
+  Future<({int deg, Uint8List img, String text, ParsedTag tag, int score})>
+  _readImage(
+    Uint8List image, {
+    bool autoRotate = true,
+    required bool Function(ParsedTag) enough,
+  }) async {
+    final enhance = _enhance && _ocr.needsEnhancement;
+    final rotations = autoRotate && !_ocr.handlesRotation
+        ? const [0, 90, 270, 180]
+        : const [0];
+    ({int deg, Uint8List img, String text, ParsedTag tag, int score})? best;
+    for (final deg in rotations) {
+      if (deg != 0) {
+        setState(
+          () => _status = 'Text unclear — trying the image rotated $deg°…',
+        );
+      }
+      final rotated = deg == 0 ? image : await _enhancer.rotate(image, deg);
+      final input = enhance ? await _enhancer.enhance(rotated) : rotated;
+      final text = await _ocr.recognize(input);
+      final tag = const TagParser().parse(text);
+      final score = scoreParsedTag(tag);
+      if (best == null || score > best.score) {
+        best = (deg: deg, img: rotated, text: text, tag: tag, score: score);
+      }
+      if (enough(tag)) break;
+    }
+    return best!;
+  }
+
+  /// Reads the first photo (the tag's description side).
   Future<void> _runOcr({bool autoRotate = true}) async {
     final image = _preview;
     if (image == null) return;
-    final enhance = _enhance && _ocr.needsEnhancement;
     setState(() {
       _busy = true;
       _error = null;
       _parsed = null;
       _rotationNote = null;
-      _status = enhance ? 'Enhancing and reading text…' : 'Reading text…';
+      _status = _enhance && _ocr.needsEnhancement
+          ? 'Enhancing and reading text…'
+          : 'Reading text…';
     });
     try {
-      final rotations = autoRotate && !_ocr.handlesRotation
-          ? const [0, 90, 270, 180]
-          : const [0];
-      ({int deg, Uint8List img, String text, ParsedTag tag, int score})? best;
-      for (final deg in rotations) {
-        if (deg != 0) {
-          setState(
-            () => _status = 'Text unclear — trying the image rotated $deg°…',
-          );
-        }
-        final rotated = deg == 0 ? image : await _enhancer.rotate(image, deg);
-        final input = enhance ? await _enhancer.enhance(rotated) : rotated;
-        final text = await _ocr.recognize(input);
-        final tag = const TagParser().parse(text);
-        final score = scoreParsedTag(tag);
-        if (best == null || score > best.score) {
-          best = (deg: deg, img: rotated, text: text, tag: tag, score: score);
-        }
-        if (tag.goldWeight.isFound && tag.purity.isFound) break;
-      }
-      final b = best!;
+      final b = await _readImage(
+        image,
+        autoRotate: autoRotate,
+        enough: (t) => t.goldWeight.isFound && t.purity.isFound,
+      );
       setState(() {
         _parsed = b.tag;
         _fillFields(b.tag);
@@ -191,6 +239,83 @@ class _ScanScreenState extends State<ScanScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// Second photo of the same tag — usually the side with labour (LBR).
+  /// Fills in whatever the first photo did not show.
+  Future<void> _addSecondPhoto() async {
+    final current = _parsed;
+    if (current == null) return;
+    final picked = await _pickImage(_lastSource ?? ImageSource.camera);
+    if (picked == null || !mounted) return;
+    setState(() => _status = null);
+    final cropped = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(builder: (_) => CropScreen(image: picked)),
+    );
+    if (cropped == null || !mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _status = 'Reading the 2nd photo…';
+    });
+    try {
+      final b = await _readImage(
+        cropped,
+        enough: (t) => t.makingValue.isFound || t.goldWeight.isFound,
+      );
+      final merged = current.mergeWith(b.tag);
+      final added = _describeAdded(current, merged);
+      setState(() {
+        _beforeSecond = current;
+        _preview2 = b.img;
+        _parsed = merged;
+        _fillFields(merged);
+        _status = null;
+      });
+      _snack(
+        added.isEmpty
+            ? 'Nothing new on the 2nd photo — check it shows the labour (LBR)'
+            : 'From the 2nd photo: ${added.join(', ')}',
+      );
+    } catch (e) {
+      setState(() {
+        _status = null;
+        _error = 'Could not read the 2nd photo: $e';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Removes the second photo and what it added.
+  void _removeSecondPhoto() => setState(() {
+    final before = _beforeSecond;
+    if (before != null) {
+      _parsed = before;
+      _fillFields(before);
+    }
+    _preview2 = null;
+    _beforeSecond = null;
+  });
+
+  /// Labels of the values [after] has that [before] lacked.
+  List<String> _describeAdded(ParsedTag before, ParsedTag after) => [
+    if (!before.makingValue.isFound && after.makingValue.isFound)
+      'labour ${formatInput(after.makingValue.value)}'
+          '${switch (after.makingMethod.value) {
+            MakingMethod.percentOfGold => '%',
+            MakingMethod.fixed => ' (fixed ₹)',
+            _ => ' ₹/g',
+          }}',
+    if (!before.goldWeight.isFound && after.goldWeight.isFound) 'gold weight',
+    if (!before.purity.isFound && after.purity.isFound) 'purity',
+    if (!before.grossWeight.isFound && after.grossWeight.isFound)
+      'gross weight',
+    if (!before.tagNumber.isFound && after.tagNumber.isFound) 'tag number',
+    if (before.stones.isEmpty && after.stones.isNotEmpty) 'stone lines',
+  ];
+
+  void _snack(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
   Future<void> _showPermissionHelp(ImageSource source) => showDialog<void>(
     context: context,
@@ -391,7 +516,8 @@ class _ScanScreenState extends State<ScanScreen> {
       '• Lay the tag flat and fill the frame with it\n'
       '• Use good light; avoid glare on laminated tags\n'
       '• Hold steady until the text is sharp\n'
-      '• Crop to the printed area after capture',
+      '• Crop to the printed area after capture\n'
+      '• Labour (LBR) on the other side? Add a 2nd photo after the first',
       style: TextStyle(color: AppColors.muted, height: 1.6),
     ),
     const SizedBox(height: 12),
@@ -483,6 +609,8 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ),
       if (p != null) ...[
+        const SizedBox(height: 10),
+        _secondPhotoRow(),
         const SizedBox(height: 14),
         const SectionTitle('Extracted Information'),
         if (pending.isNotEmpty)
@@ -656,6 +784,73 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       ],
     ];
+  }
+
+  /// "Add 2nd photo" — or the second photo's thumbnail with Remove.
+  Widget _secondPhotoRow() {
+    final second = _preview2;
+    if (second == null) {
+      return OutlinedButton.icon(
+        key: const Key('addSecondPhoto'),
+        onPressed: _busy ? null : _addSecondPhoto,
+        icon: const Icon(Icons.add_a_photo_outlined),
+        label: const Text('Add 2nd photo (labour / LBR side)'),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (context) => Dialog(
+                clipBehavior: Clip.antiAlias,
+                child: InteractiveViewer(child: Image.memory(second)),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.memory(
+                second,
+                key: const Key('secondPhoto'),
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
+                cacheWidth: 192,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '2nd photo added',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'Values missing from the 1st photo were read from it.',
+                  style: TextStyle(fontSize: 13, color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: const Key('removeSecondPhoto'),
+            tooltip: 'Remove 2nd photo',
+            onPressed: _busy ? null : _removeSecondPhoto,
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Editable value boxes, filled from the scan; typing confirms the value.
