@@ -80,8 +80,8 @@ void main() {
       'Payment mode: UPI',
     );
     expect(find.byKey(const Key('billPrint')), findsOneWidget);
-    expect(find.byKey(const Key('billWhatsApp_919717593594')), findsOneWidget);
-    expect(find.byKey(const Key('billWhatsApp_919667725005')), findsOneWidget);
+    expect(find.byKey(const Key('billPrintPaper')), findsOneWidget);
+    expect(find.textContaining('+91 97175 93594'), findsOneWidget);
 
     final id = state.history.all().single.id;
     final bill = state.billFor(id)!;

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../billing/bill.dart';
 import '../../branding.dart';
@@ -149,9 +148,10 @@ Future<BillCustomer?> showBillDialog(BuildContext context, {Bill? initial}) {
   );
 }
 
-/// The bill: customer, item, full cost break-up and payment mode, with
-/// Print, Share PDF and WhatsApp to the shop's numbers.
-class BillScreen extends StatelessWidget {
+/// The bill: customer, item, full cost break-up and payment mode. Print
+/// shares the bill as a PDF (pick WhatsApp and the chat); "Print on
+/// paper" opens the printer dialog.
+class BillScreen extends StatefulWidget {
   const BillScreen({
     super.key,
     required this.bill,
@@ -165,59 +165,64 @@ class BillScreen extends StatelessWidget {
   final PricingResult result;
   final VoidCallback? onEditCustomer;
 
-  String get _pdfName => 'bill-${bill.billNo}.pdf';
+  @override
+  State<BillScreen> createState() => _BillScreenState();
+}
 
-  Future<void> _print(BuildContext context) async {
-    try {
-      await Printing.layoutPdf(
-        name: _pdfName,
-        onLayout: (_) => buildBillPdf(bill, input, result),
-      );
-    } catch (e) {
-      if (context.mounted) _snack(context, 'Could not open printing: $e');
-    }
+class _BillScreenState extends State<BillScreen> {
+  // Built up front: browsers (iPhone Safari) only open the share sheet
+  // straight after a tap, so the PDF must be ready before it.
+  late final Future<Uint8List> _pdf = buildBillPdf(
+    widget.bill,
+    widget.input,
+    widget.result,
+  );
+  Uint8List? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _pdf.then((b) {
+      if (mounted) setState(() => _bytes = b);
+    }, onError: (Object _) {});
   }
 
-  Future<void> _sharePdf(BuildContext context) async {
+  String get _pdfName => 'bill-${widget.bill.billNo}.pdf';
+
+  Future<void> _sendPdf() async {
     try {
-      final bytes = await buildBillPdf(bill, input, result);
+      final bytes = _bytes ?? await _pdf;
       await SharePlus.instance.share(
         ShareParams(
           files: [
             XFile.fromData(bytes, mimeType: 'application/pdf', name: _pdfName),
           ],
-          text: '${Brand.name} — Bill ${bill.billNo}',
+          text:
+              '${Brand.name} — Bill ${widget.bill.billNo} · '
+              '${widget.bill.customerName} · '
+              '${formatPaise(widget.result.totalPaise)}',
         ),
       );
     } catch (e) {
-      if (context.mounted) _snack(context, 'Could not share the PDF: $e');
+      if (mounted) _snack('Could not share the PDF: $e');
     }
   }
 
-  Future<void> _whatsApp(BuildContext context, String number) async {
-    final text = buildBillText(bill, input, result);
-    final url = Uri.parse(
-      'https://wa.me/$number?text=${Uri.encodeComponent(text)}',
-    );
-    var opened = false;
+  Future<void> _printOnPaper() async {
     try {
-      opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      opened = false;
-    }
-    if (!opened && context.mounted) {
-      _snack(context, 'Could not open WhatsApp');
+      await Printing.layoutPdf(name: _pdfName, onLayout: (_) => _pdf);
+    } catch (e) {
+      if (mounted) _snack('Could not open printing: $e');
     }
   }
 
-  static void _snack(BuildContext context, String msg) =>
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(String msg) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(msg)));
 
   @override
   Widget build(BuildContext context) {
-    final i = input, r = result, b = bill;
+    final i = widget.input, r = widget.result, b = widget.bill;
     return Scaffold(
       appBar: AppBar(title: Text('Bill ${b.billNo}')),
       body: SafeArea(
@@ -317,39 +322,32 @@ class BillScreen extends StatelessWidget {
               const SizedBox(height: 14),
               FilledButton.icon(
                 key: const Key('billPrint'),
-                onPressed: () => _print(context),
-                icon: const Icon(Icons.print_outlined),
-                label: const Text('Print'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366), // WhatsApp green
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: _sendPdf,
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: Text(
+                  _bytes == null ? 'Preparing PDF…' : 'Print — send PDF',
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Opens the share sheet with the bill PDF: pick WhatsApp, then '
+                '${billWhatsAppNumbers.map(displayPhone).join(' or ')}.',
+                style: const TextStyle(fontSize: 12, color: AppColors.muted),
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
-                key: const Key('billSharePdf'),
-                onPressed: () => _sharePdf(context),
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('Share PDF'),
+                key: const Key('billPrintPaper'),
+                onPressed: _printOnPaper,
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Print on paper'),
               ),
-              const SizedBox(height: 14),
-              for (final n in billWhatsAppNumbers) ...[
-                FilledButton.icon(
-                  key: Key('billWhatsApp_$n'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF25D366),
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () => _whatsApp(context, n),
-                  icon: const Icon(Icons.send),
-                  label: Text('WhatsApp ${displayPhone(n)}'),
-                ),
-                const SizedBox(height: 8),
-              ],
-              const Text(
-                'WhatsApp opens the chat with the bill typed in. To send the '
-                'PDF as well, use Share PDF and pick the chat.',
-                style: TextStyle(fontSize: 12, color: AppColors.muted),
-              ),
-              if (onEditCustomer != null)
+              if (widget.onEditCustomer != null)
                 TextButton.icon(
-                  onPressed: onEditCustomer,
+                  onPressed: widget.onEditCustomer,
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Edit customer details'),
                 ),
