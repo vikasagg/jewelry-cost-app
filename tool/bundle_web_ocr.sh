@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Vendors Tesseract.js + English model into build/web/ocr so web scanning
-# works fully offline (no CDN). Run after `flutter build web`.
+# Bundles the in-browser OCR engine into build/web/ocr: PaddleOCR (PP-OCRv4
+# mobile detection + recognition models) on ONNX Runtime Web, wrapped by
+# tool/web_ocr/entry.js. Everything is served from the app itself (no CDN),
+# so scanning works offline once loaded. Run after `flutter build web`.
 #   ./tool/bundle_web_ocr.sh [build/web]
 set -euo pipefail
-OUT="${1:-build/web}/ocr"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-( cd "$TMP" && npm pack --silent tesseract.js@5.1.1 tesseract.js-core@5.1.1 @tesseract.js-data/eng@1.0.0 >/dev/null )
-for f in "$TMP"/*.tgz; do d="${f%.tgz}"; mkdir -p "$d"; tar xzf "$f" -C "$d"; done
-mkdir -p "$OUT/core" "$OUT/lang"
-cp "$TMP"/tesseract.js-5.1.1/package/dist/{tesseract.min.js,worker.min.js} "$OUT/"
-# LSTM-only builds (plain + SIMD) are all Tesseract.js uses with the default OEM.
-cp "$TMP"/tesseract.js-core-5.1.1/package/tesseract-core{,-simd}-lstm.{js,wasm,wasm.js} "$OUT/core/"
-cp "$TMP"/tesseract.js-data-eng-1.0.0/package/4.0.0_best_int/eng.traineddata.gz "$OUT/lang/"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OUT="$(mkdir -p "${1:-build/web}" && cd "${1:-build/web}" && pwd)/ocr"
+SRC="$ROOT/tool/web_ocr"
+( cd "$SRC" && npm ci --no-audit --no-fund --silent )
+rm -rf "$OUT" && mkdir -p "$OUT"
+( cd "$SRC" && npx esbuild entry.js --bundle --format=esm --platform=browser \
+    --external:path --external:fs --external:crypto \
+    --alias:onnxruntime-web=onnxruntime-web/wasm \
+    --minify --log-level=warning --outfile="$OUT/jcocr.js" )
+cp "$SRC"/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.{wasm,mjs} "$OUT/"
+cp "$SRC"/node_modules/@gutenye/ocr-models/assets/{ch_PP-OCRv4_det_infer.onnx,ch_PP-OCRv4_rec_infer.onnx,ppocr_keys_v1.txt} "$OUT/"
 echo "Bundled OCR assets into $OUT ($(du -sh "$OUT" | cut -f1))"

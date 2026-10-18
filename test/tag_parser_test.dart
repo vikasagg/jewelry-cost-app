@@ -457,4 +457,24 @@ void main() {
       expect(input.goldWeight, 10.25);
     });
   });
+
+  group('PaddleOCR output of the real tag photo', () {
+    for (final text in [
+      'G.Wt:6.410 14K\nN.Wt:5.886\nDIA0.38700\nDIA0.11750\nFANCY CUT\\2.13850',
+      'G.Wt:6.410 14K\nN.Wt:5.886\nDIA0.38700\nDIA0.11750\nFANCY CUT2.13 850',
+      'G.Wt:6.41014K\nN.Wt:5.886\nDIA0.38700\nDIA\\0.11750\nFANCY CUT\\2.13850',
+    ]) {
+      test(text.replaceAll('\n', ' | '), () {
+        final t = parser.parse(text);
+        expect(t.purity.value, Purity.k14);
+        expect(t.goldWeight.value, 5.886);
+        expect(t.grossWeight.value, 6.41);
+        expect(
+          [for (final s in t.stones) (s.weight.value, s.code)],
+          [(0.38, '700'), (0.11, '750'), (2.13, '850')],
+        );
+        expect(t.uncertainFields, isEmpty);
+      });
+    }
+  });
 }

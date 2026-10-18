@@ -20,6 +20,12 @@ class MlKitOcrService implements OcrService {
   String get engineName => 'ML Kit (on-device)';
 
   @override
+  bool get handlesRotation => false;
+
+  @override
+  bool get needsEnhancement => true;
+
+  @override
   Future<String> recognize(Uint8List imageBytes) async {
     if (!(Platform.isAndroid || Platform.isIOS)) {
       throw OcrException('Camera OCR is available on Android, iOS and web.');

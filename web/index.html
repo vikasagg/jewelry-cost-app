@@ -34,27 +34,23 @@
 
   <title>Damiyaas Jewelers</title>
   <meta name="theme-color" content="#A8843A">
-  <!-- In-browser OCR (Tesseract.js). Uses assets bundled under ocr/ when
-       present (see tool/bundle_web_ocr.sh) so scanning works offline;
-       otherwise falls back to the CDN. -->
-  <script src="ocr/tesseract.min.js"
-          onload="window.jcOcrLocal = true"
-          onerror="this.remove(); var s = document.createElement('script');
-                   s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-                   document.head.appendChild(s);"></script>
+  <!-- In-browser OCR: PaddleOCR on ONNX Runtime Web, bundled under ocr/
+       by tool/bundle_web_ocr.sh (no CDN). The engine starts loading as
+       soon as the app opens so the first scan does not wait for it. -->
+  <script type="module">
+    window.jcOcrReady = import('./ocr/jcocr.js').then(
+      () => {
+        // Start loading the models once the app has drawn its first screen.
+        setTimeout(() => window.jcOcr.warmUp().catch(() => {}), 1500);
+        return true;
+      },
+      () => false);
+  </script>
   <script>
-    // Called from Dart (lib/ocr/ocr_service_web.dart). Reuses one worker.
-    window.jcRecognize = async function (image) {
-      if (typeof Tesseract === 'undefined') throw new Error('OCR engine not loaded');
-      if (!window.jcOcrWorker) {
-        var opts = window.jcOcrLocal
-          ? { workerPath: 'ocr/worker.min.js', corePath: 'ocr/core', langPath: 'ocr/lang' }
-          : {};
-        window.jcOcrWorker = Tesseract.createWorker('eng', 1, opts);
-      }
-      var worker = await window.jcOcrWorker;
-      var result = await worker.recognize(image);
-      return result.data.text;
+    // Called from Dart (lib/ocr/ocr_service_web.dart).
+    window.jcRecognize = async function (imageUrl) {
+      if (!(await window.jcOcrReady)) throw new Error('OCR engine not loaded');
+      return window.jcOcr.recognize(imageUrl);
     };
   </script>
   <link rel="manifest" href="manifest.json">

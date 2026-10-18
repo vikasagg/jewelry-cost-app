@@ -25,7 +25,8 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> {
   final _picker = ImagePicker();
   final _enhancer = const ImageEnhancer();
-  OcrService? _ocr;
+  OcrService? _ocrService;
+  OcrService get _ocr => _ocrService ??= OcrService();
 
   ImageSource? _lastSource;
 
@@ -43,7 +44,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   void dispose() {
-    _ocr?.dispose();
+    _ocrService?.dispose();
     super.dispose();
   }
 
@@ -58,8 +59,8 @@ class _ScanScreenState extends State<ScanScreen> {
     try {
       file = await _picker.pickImage(
         source: source,
-        maxWidth: 2400,
-        maxHeight: 2400,
+        maxWidth: 1600,
+        maxHeight: 1600,
         imageQuality: 92,
         preferredCameraDevice: CameraDevice.rear,
       );
@@ -115,29 +116,33 @@ class _ScanScreenState extends State<ScanScreen> {
 
   /// Runs OCR. With [autoRotate], a sideways or upside-down photo is
   /// detected by also trying 90°/270°/180° when the first pass finds too
-  /// little, keeping the orientation whose text yields the most fields.
+  /// little, keeping the orientation whose text yields the most fields
+  /// (engines that correct orientation themselves need only one pass).
   Future<void> _runOcr({bool autoRotate = true}) async {
     final image = _preview;
     if (image == null) return;
+    final enhance = _enhance && _ocr.needsEnhancement;
     setState(() {
       _busy = true;
       _error = null;
       _parsed = null;
       _rotationNote = null;
-      _status = _enhance ? 'Enhancing and reading text…' : 'Reading text…';
+      _status = enhance ? 'Enhancing and reading text…' : 'Reading text…';
     });
     try {
-      _ocr ??= OcrService();
+      final rotations = autoRotate && !_ocr.handlesRotation
+          ? const [0, 90, 270, 180]
+          : const [0];
       ({int deg, Uint8List img, String text, ParsedTag tag, int score})? best;
-      for (final deg in autoRotate ? const [0, 90, 270, 180] : const [0]) {
+      for (final deg in rotations) {
         if (deg != 0) {
           setState(
             () => _status = 'Text unclear — trying the image rotated $deg°…',
           );
         }
         final rotated = deg == 0 ? image : await _enhancer.rotate(image, deg);
-        final input = _enhance ? await _enhancer.enhance(rotated) : rotated;
-        final text = await _ocr!.recognize(input);
+        final input = enhance ? await _enhancer.enhance(rotated) : rotated;
+        final text = await _ocr.recognize(input);
         final tag = const TagParser().parse(text);
         final score = scoreParsedTag(tag);
         if (best == null || score > best.score) {
@@ -313,13 +318,14 @@ class _ScanScreenState extends State<ScanScreen> {
           child: Image.memory(_preview!, fit: BoxFit.contain),
         ),
       ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Enhance image for OCR'),
-        subtitle: const Text('Greyscale, contrast and sharpening'),
-        value: _enhance,
-        onChanged: _busy ? null : (v) => setState(() => _enhance = v),
-      ),
+      if (_ocr.needsEnhancement)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Enhance image for OCR'),
+          subtitle: const Text('Greyscale, contrast and sharpening'),
+          value: _enhance,
+          onChanged: _busy ? null : (v) => setState(() => _enhance = v),
+        ),
       if (_rotationNote != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),

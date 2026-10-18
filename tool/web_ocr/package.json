@@ -1,0 +1,15 @@
+{
+  "name": "jewellery-web-ocr",
+  "private": true,
+  "description": "Bundles PaddleOCR (ONNX, in-browser) for the web build. See ../bundle_web_ocr.sh.",
+  "type": "module",
+  "dependencies": {
+    "@gutenye/ocr-browser": "1.4.9",
+    "@gutenye/ocr-common": "1.4.9",
+    "@gutenye/ocr-models": "1.4.2",
+    "onnxruntime-web": "1.30.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0"
+  }
+}

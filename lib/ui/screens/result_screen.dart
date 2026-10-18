@@ -42,7 +42,10 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
-  late final JewelleryInput _input = widget.input;
+  late JewelleryInput _input = widget.input;
+
+  /// Purity as read from the tag / entered on the form.
+  late final Purity? _originalPurity = widget.input.purity;
   late GoldRates _rates = widget.ratesSnapshot;
   late String? _recordId = widget.recordId;
   PricingResult? _result;
@@ -96,6 +99,57 @@ class _ResultScreenState extends State<ResultScreen> {
       ),
     );
   }
+
+  /// Re-prices the estimate for another purity (picked on this screen) and
+  /// keeps the saved history record in step with what is shown.
+  Future<void> _changePurity(Purity p) async {
+    if (p == _input.purity) return;
+    setState(() {
+      _input = _input.copyWith(purity: p);
+      _compute();
+      _dirty = true;
+    });
+    if (_result != null && _recordId != null) await _save(auto: true);
+  }
+
+  Widget _purityPicker() => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        const Text(
+          'Gold purity',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DropdownButtonFormField<Purity>(
+            key: const Key('resultPurity'),
+            initialValue: _input.purity,
+            isDense: true,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            items: [
+              for (final p in Purity.values.reversed)
+                if (_rates.rateFor(p) != null)
+                  DropdownMenuItem(
+                    value: p,
+                    child: Text(
+                      overflow: TextOverflow.ellipsis,
+                      '${p.label}${p == _originalPurity ? (widget.source == 'scan' ? ' (from tag)' : ' (entered)') : ''}'
+                      ' · ${formatInr(_rates.quotedRateFor(p)!)}/${_rates.quoteUnit}',
+                    ),
+                  ),
+            ],
+            onChanged: (p) {
+              if (p != null) _changePurity(p);
+            },
+          ),
+        ),
+      ],
+    ),
+  );
 
   void _recalculate() {
     final current = AppScope.read(context).rates;
@@ -324,6 +378,8 @@ class _ResultScreenState extends State<ResultScreen> {
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
+        // Outside the summary card so it is not part of the WhatsApp image.
+        _purityPicker(),
         RepaintBoundary(
           key: _summaryKey,
           child: Card(
