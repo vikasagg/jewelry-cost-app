@@ -15,6 +15,7 @@ import '../../pricing/pricing_engine.dart';
 import '../summary_text.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/price_icons.dart';
 import 'details_form_screen.dart';
 import 'scan_screen.dart';
 
@@ -28,7 +29,12 @@ class ResultScreen extends StatefulWidget {
     this.source = 'manual',
     this.openedFromForm = false,
     this.savedAt,
+    this.image,
   });
+
+  /// Thumbnail of the scanned tag; for saved records it is loaded from
+  /// history when not given.
+  final Uint8List? image;
 
   final JewelleryInput input;
   final GoldRates ratesSnapshot;
@@ -48,6 +54,11 @@ class _ResultScreenState extends State<ResultScreen> {
   late final Purity? _originalPurity = widget.input.purity;
   late GoldRates _rates = widget.ratesSnapshot;
   late String? _recordId = widget.recordId;
+  late final Uint8List? _image =
+      widget.image ??
+      (widget.recordId == null
+          ? null
+          : AppScope.read(context).imageFor(widget.recordId!));
   PricingResult? _result;
   List<PricingIssue> _issues = const [];
   bool _dirty = true; // not yet saved in its current form
@@ -82,6 +93,7 @@ class _ResultScreenState extends State<ResultScreen> {
       result: _result!,
       existingId: _recordId,
       source: widget.source,
+      image: widget.image,
     );
     if (!mounted) return;
     setState(() {
@@ -111,6 +123,64 @@ class _ResultScreenState extends State<ResultScreen> {
     });
     if (_result != null && _recordId != null) await _save(auto: true);
   }
+
+  /// Scanned tag photo, shown small (decoded at thumbnail size); tap to
+  /// enlarge.
+  Widget _photoHeader(JewelleryInput i, PricingResult r) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Row(
+      children: [
+        GestureDetector(
+          key: const Key('resultPhoto'),
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (context) => Dialog(
+              clipBehavior: Clip.antiAlias,
+              child: InteractiveViewer(
+                child: Image.memory(_image, fit: BoxFit.contain),
+              ),
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              _image!,
+              width: 84,
+              height: 84,
+              fit: BoxFit.cover,
+              cacheWidth: 252, // decode small: 84 px at up to 3× density
+              gaplessPlayback: true,
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                i.tagNumber ?? 'Scanned tag',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${r.purity.label} gold · ${i.goldWeight!.toStringAsFixed(3)} g',
+                style: const TextStyle(fontSize: 15),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                formatDateTime(widget.savedAt ?? AppScope.of(context).now()),
+                style: const TextStyle(color: AppColors.muted),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _purityPicker() => Padding(
     padding: const EdgeInsets.only(bottom: 8),
@@ -378,7 +448,9 @@ class _ResultScreenState extends State<ResultScreen> {
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        // Outside the summary card so it is not part of the WhatsApp image.
+        // Photo and purity picker sit outside the summary card, so the
+        // WhatsApp image never shows the tag (with its rate codes).
+        if (_image != null) _photoHeader(i, r),
         _purityPicker(),
         RepaintBoundary(
           key: _summaryKey,
@@ -400,29 +472,42 @@ class _ResultScreenState extends State<ResultScreen> {
                   TileGrid(
                     children: [
                       if ((i.tagNumber ?? '').trim().isNotEmpty)
-                        StatTile(label: 'Tag No.', value: i.tagNumber!),
-                      StatTile(label: 'Gold Purity', value: r.purity.label),
+                        StatTile(
+                          icon: PriceIcons.tag,
+                          label: 'Tag No.',
+                          value: i.tagNumber!,
+                        ),
                       StatTile(
+                        icon: PriceIcons.purity,
+                        label: 'Gold Purity',
+                        value: r.purity.label,
+                      ),
+                      StatTile(
+                        icon: PriceIcons.weight,
                         label: 'Gold Weight',
                         value: '${i.goldWeight!.toStringAsFixed(3)} g',
                       ),
                       if (i.diamondWeight > 0)
                         StatTile(
+                          icon: PriceIcons.diamond,
                           label: 'Diamond Weight',
                           value: '${i.diamondWeight.toStringAsFixed(2)} ct',
                         ),
                       if (i.stoneWeight > 0)
                         StatTile(
+                          icon: PriceIcons.stone,
                           label: 'Stones',
                           value: '${formatPercent(i.stoneWeight)} pcs',
                         ),
                       if (i.polkiWeight > 0)
                         StatTile(
+                          icon: PriceIcons.polki,
                           label: 'Polki Weight',
                           value: '${i.polkiWeight.toStringAsFixed(2)} ct',
                         ),
                       if (i.grossWeight != null)
                         StatTile(
+                          icon: PriceIcons.grossWeight,
                           label: 'Gross Weight',
                           value: '${i.grossWeight!.toStringAsFixed(3)} g',
                         ),
@@ -433,11 +518,13 @@ class _ResultScreenState extends State<ResultScreen> {
                   // Price breakdown
                   const SectionTitle('Price Breakdown'),
                   BreakdownRow(
+                    icon: PriceIcons.rate,
                     label: 'Applicable gold rate (${r.purity.label})',
                     value: '${formatInr(r.goldRatePerGram)}/g',
                     caption: 'Rates saved ${formatDateTime(_rates.updatedAt)}',
                   ),
                   BreakdownRow(
+                    icon: PriceIcons.gold,
                     label: 'Gold value',
                     valueKey: const Key('goldValue'),
                     value: formatPaise(r.goldValuePaise),
@@ -447,18 +534,21 @@ class _ResultScreenState extends State<ResultScreen> {
                   // Zero-value lines are left out of the estimate.
                   if (r.diamondValuePaise > 0)
                     BreakdownRow(
+                      icon: PriceIcons.diamond,
                       label: 'Diamond value',
                       value: formatPaise(r.diamondValuePaise),
                       caption: _stonesCaption(i, r, StoneKind.diamond),
                     ),
                   if (r.stoneValuePaise > 0)
                     BreakdownRow(
+                      icon: PriceIcons.stone,
                       label: 'Stone value',
                       value: formatPaise(r.stoneValuePaise),
                       caption: _stonesCaption(i, r, StoneKind.stone),
                     ),
                   if (r.polkiValuePaise > 0)
                     BreakdownRow(
+                      icon: PriceIcons.polki,
                       label: 'Polki value',
                       value: formatPaise(r.polkiValuePaise),
                       caption: _stonesCaption(i, r, StoneKind.polki),
@@ -466,10 +556,12 @@ class _ResultScreenState extends State<ResultScreen> {
                   // Wastage is no longer used; shown only for old saved records.
                   if (r.wastagePaise > 0)
                     BreakdownRow(
+                      icon: PriceIcons.wastage,
                       label: 'Wastage charges',
                       value: formatPaise(r.wastagePaise),
                     ),
                   BreakdownRow(
+                    icon: PriceIcons.labour,
                     label: 'Making charges',
                     value: formatPaise(r.makingPaise),
                     caption: switch (i.makingMethod) {
@@ -482,11 +574,13 @@ class _ResultScreenState extends State<ResultScreen> {
                   ),
                   const Divider(height: 16),
                   BreakdownRow(
+                    icon: PriceIcons.subtotal,
                     label: 'Subtotal',
                     value: formatPaise(r.subtotalPaise),
                     bold: true,
                   ),
                   BreakdownRow(
+                    icon: PriceIcons.subtotal,
                     label: 'Taxable subtotal',
                     value: formatPaise(r.taxableBasePaise),
                     caption: r.gstLines.isEmpty
@@ -504,12 +598,17 @@ class _ResultScreenState extends State<ResultScreen> {
                   ),
                   for (final l in r.gstLines)
                     BreakdownRow(
+                      icon: PriceIcons.gst,
                       label: '${l.label} @ ${formatPercent(l.ratePercent)}%',
                       value: formatPaise(l.amountPaise),
                       caption: 'on ${formatPaise(l.basePaise)}',
                     ),
                   if (r.gstLines.isEmpty)
-                    const BreakdownRow(label: 'GST', value: '₹0.00'),
+                    BreakdownRow(
+                      icon: PriceIcons.gst,
+                      label: 'GST',
+                      value: '₹0.00',
+                    ),
                   const Divider(),
                   const Text(
                     'Total estimated jewellery cost',

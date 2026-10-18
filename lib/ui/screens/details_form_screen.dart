@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
@@ -20,7 +21,11 @@ class DetailsFormScreen extends StatefulWidget {
     this.initial,
     this.ratesSnapshot,
     this.recordId,
+    this.image,
   });
+
+  /// Thumbnail of the scanned tag, saved with the estimate.
+  final Uint8List? image;
 
   /// OCR result to pre-fill from (scan flow).
   final ParsedTag? parsed;
@@ -374,6 +379,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
           recordId: _recordId,
           source: _isScan ? 'scan' : 'manual',
           openedFromForm: true,
+          image: widget.image,
         ),
       ),
     );

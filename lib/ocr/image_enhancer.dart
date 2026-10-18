@@ -21,6 +21,10 @@ class ImageEnhancer {
     fraction.height,
   ));
 
+  /// Small JPEG (longest side [maxSide] px) kept with a saved estimate.
+  Future<Uint8List> thumbnail(Uint8List bytes, {int maxSide = 360}) =>
+      compute(_thumbnail, (bytes, maxSide));
+
   /// Rotates clockwise by [degrees] (90, 180 or 270).
   Future<Uint8List> rotate(Uint8List bytes, int degrees) =>
       compute(_rotate, (bytes, degrees));
@@ -36,6 +40,15 @@ Uint8List _crop((Uint8List, double, double, double, double) a) {
   return Uint8List.fromList(
     _png(img.copyCrop(image, x: x, y: y, width: w, height: h)),
   );
+}
+
+Uint8List _thumbnail((Uint8List, int) a) {
+  final image = img.decodeImage(a.$1);
+  if (image == null) throw const FormatException('Unsupported image format');
+  final small = image.width >= image.height
+      ? img.copyResize(image, width: a.$2.clamp(1, image.width))
+      : img.copyResize(image, height: a.$2.clamp(1, image.height));
+  return Uint8List.fromList(img.encodeJpg(small, quality: 70));
 }
 
 Uint8List _rotate((Uint8List, int) args) {

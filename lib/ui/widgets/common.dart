@@ -107,10 +107,14 @@ class StatTile extends StatelessWidget {
     required this.label,
     required this.value,
     this.highlight = false,
+    this.icon,
   });
   final String label;
   final String value;
   final bool highlight;
+
+  /// Optional small icon shown before the label.
+  final Widget? icon;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -123,9 +127,16 @@ class StatTile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 13, color: AppColors.muted),
+        Row(
+          children: [
+            if (icon != null) ...[icon!, const SizedBox(width: 6)],
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(fontSize: 13, color: AppColors.muted),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         FittedBox(
@@ -315,12 +326,16 @@ class BreakdownRow extends StatelessWidget {
     this.caption,
     this.bold = false,
     this.valueKey,
+    this.icon,
   });
   final String label;
   final String value;
   final String? caption;
   final bool bold;
   final Key? valueKey;
+
+  /// Optional small icon shown before the label.
+  final Widget? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -334,6 +349,10 @@ class BreakdownRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (icon != null) ...[
+            Padding(padding: const EdgeInsets.only(top: 1), child: icon),
+            const SizedBox(width: 10),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

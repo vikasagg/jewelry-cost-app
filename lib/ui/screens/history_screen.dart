@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
@@ -17,6 +18,9 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   final _search = TextEditingController();
+
+  /// Decoded photo thumbnails by record id (decoded once, not per build).
+  final _photos = <String, Uint8List?>{};
 
   @override
   void dispose() {
@@ -124,6 +128,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, i) => _RecordCard(
                           record: records[i],
+                          photo: _photos.putIfAbsent(
+                            records[i].id,
+                            () =>
+                                AppScope.read(context).imageFor(records[i].id),
+                          ),
                           onOpen: () => _open(records[i]),
                           onEdit: () => _edit(records[i]),
                           onDelete: () => _delete(records[i]),
@@ -141,11 +150,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 class _RecordCard extends StatelessWidget {
   const _RecordCard({
     required this.record,
+    required this.photo,
     required this.onOpen,
     required this.onEdit,
     required this.onDelete,
   });
   final CalculationRecord record;
+  final Uint8List? photo;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -172,6 +183,21 @@ class _RecordCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (photo != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.memory(
+                        photo!,
+                        key: Key('historyPhoto_${record.id}'),
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        cacheWidth: 168, // decode at thumbnail size
+                        gaplessPlayback: true,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
