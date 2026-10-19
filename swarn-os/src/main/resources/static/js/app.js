@@ -56,10 +56,10 @@ function shell() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="shell">
     <aside class="side">
-      <div class="brand"><img src="icon.svg" alt=""><div><b>${esc(s.shop.name)}</b><span>Swarn-OS · ${esc(s.shop.storageMode === 'LOCAL' ? 'Local database' : 'Cloud database')}</span></div></div>
+      <div class="brand"><img src="icon.svg" alt=""><div><b>${esc(s.shop.name)}</b><span>Swarn-OS · ${esc(s.shop.storage_mode === 'LOCAL' ? 'Local database' : 'Cloud database')}</span></div></div>
       <nav class="nav">${NAV.map(n => n === null ? '<div class="sep"></div>' : (n[3] && !can(n[3])) ? '' :
         `<a href="${n[0]}" data-path="${n[0]}">${ICONS[n[2]]}<span>${n[1]}</span></a>`).join('')}</nav>
-      <div class="who">${esc(s.user.fullName)} · ${esc(fmt.label(s.user.role))}<br>Shop code: <b>${esc(s.shop.code)}</b><br>
+      <div class="who">${esc(s.user.full_name)} · ${esc(fmt.label(s.user.role))}<br>Shop code: <b>${esc(s.shop.code)}</b><br>
         <button class="small dark" id="logout">Sign out</button></div>
     </aside>
     <div class="main">

@@ -78,36 +78,69 @@ Cloud server with PostgreSQL: `docker compose up` (see `docker-compose.yml`).
 ## Tests
 
 ```bash
-mvn test                                                        # 23 tests, local H2 shop databases
-mvn test -Dswarn.test.storage=CLOUD -Dtest=SwarnOsIntegrationTest     # same suite with the demo shop on PostgreSQL
+mvn test                                                          # 55 tests: domain rules, a service with mocks, architecture rules, API end to end
+mvn test -Dswarn.test.storage=CLOUD -Dtest=ApiIntegrationTest     # API suite with the demo shop on PostgreSQL
 ```
 
-Covers the BRD pricing example, the voice interpreter (English, Hinglish,
-Devanagari), rate derivation, double-sale blocking, role masking of Seen/Unseen
-and cost, purchase classification, shop isolation, encrypted USB backup and
-restore into a new shop, tally variances and strict close, repairs, and every
-report.
+- **Domain unit tests** (no Spring, no database): pricing (BRD worked example), purity derivation, old-metal valuation,
+  purchase payment legs and totals, Seen/Unseen rule, bill totals and discount limit, tally reconciliation, repair
+  transitions, backup encryption, the voice interpreter (English, Hinglish, Devanagari).
+- **Service test with mocks**: `RateServiceTest` checks approval rules with the repository mocked out.
+- **Architecture test** (`ArchitectureTest`, ArchUnit): enforces the layering below on every build.
+- **API integration test** (`ApiIntegrationTest`): rate derivation, double-sale blocking, role masking of Seen/Unseen
+  and cost, purchase classification, shop isolation, encrypted USB backup and restore, tally, repairs, every report.
+
+## Architecture
+
+Each feature is a module (package) with the same four layers:
+
+```
+com.swarnos.<module>
+  api/          REST controllers and request/response DTOs (JSON in snake_case). No SQL, no business rules.
+  service/      Business rules, permission checks and transactions. Talks to repositories and other modules' services.
+  domain/       Entities (records), enums and pure rules - no Spring, no SQL - e.g. PricingEngine, RateDerivation,
+                PurchaseTotals, BillCalculator, TallyReconciliation, RepairStatus, BackupCodec.
+  repository/   All SQL (Spring JdbcClient) and row mapping to domain records. No business logic.
+  infrastructure/ (where needed) technical adapters: tenant connection routing, live metal-rate feeds.
+```
+
+Rules checked by `ArchitectureTest`:
+
+| Layer | May use | Must not use |
+| --- | --- | --- |
+| `api` | service, domain | repository, SQL helpers |
+| `service` | repository, domain, other modules' services | api |
+| `repository` | domain, SQL helpers | service, api |
+| `domain` | other domain types, `common.money`, `common.error` | Spring, JDBC, service, repository, api |
+
+Repositories own their module's tables. A repository may join another module's table only to show a display name
+(customer name on a bill); every write and every business decision goes through the owning module's service.
+The `reports` module is the read side: report queries, the dashboard and a party's full history.
+
+Errors: services throw `BusinessException` (validation, not found, conflict, forbidden) with no HTTP knowledge;
+`GlobalExceptionHandler` in the API layer maps them to status codes and `{"error": "..."}`.
 
 ## Code map
 
 ```
 src/main/java/com/swarnos/
-  tenant/    shop registry, per-shop connection routing, provisioning and migrations
-  auth/      roles, permissions, signed tokens, users
-  config/    business settings, purities, categories, audit log
-  rates/     daily rate set, approval, live-rate providers (DEMO, HTTP JSON)
-  items/     item master, tags, pricing engine
-  stock/     stock ledger (the only place stock changes)
-  purchase/  purchase modes, Seen/Unseen, returns
-  sales/     billing, exchange, payments, returns
-  parties/   customers, vendors, karigars
-  ledger/    cash, bank, metal and party books
-  repair/    repair and job work
-  tally/     daily stock tally
-  search/    voice / natural-language interpreter and search
-  reports/   reports and dashboard
-  backup/    encrypted USB backup, verify, restore
-  demo/      demo shop
+  common/      errors, 3-decimal arithmetic, business clock, SQL helpers, audit trail, document numbering
+  security/    roles, permissions, signed tokens, request authentication filter
+  tenant/      shop registry (control DB), per-shop database routing, provisioning, platform API
+  identity/    sign-in, sessions, staff users
+  settings/    business settings, categories, purities, locations
+  rates/       daily rate set, approval, purity derivation, live-rate feeds
+  inventory/   items, stones, stock ledger, pricing engine
+  parties/     customers, vendors, karigars
+  accounting/  cash, bank, metal and party books; payments
+  purchase/    purchase modes, Seen/Unseen, returns to vendor
+  sales/       billing, exchange, split payments, returns
+  repair/      repair and job work
+  tally/       daily stock tally
+  search/      voice / natural-language search
+  reports/     reports, dashboard, party history (read side)
+  backup/      encrypted USB backup, verify, restore
+  demo/        demo shop, created through the services
 src/main/resources/db/tenant/   per-shop schema (Flyway), runs on H2 and PostgreSQL
 src/main/resources/static/      the web app (no build step)
 ```

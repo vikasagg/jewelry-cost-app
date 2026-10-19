@@ -32,7 +32,7 @@ jobs:
       - name: Tests with local (H2) shop databases
         run: mvn -B test
       - name: Tests with the demo shop on PostgreSQL (cloud mode)
-        run: mvn -B test -Dswarn.test.storage=CLOUD -Dtest=SwarnOsIntegrationTest
+        run: mvn -B test -Dswarn.test.storage=CLOUD -Dtest=ApiIntegrationTest
       - name: Package
         run: mvn -B -DskipTests package
       - uses: actions/upload-artifact@v4

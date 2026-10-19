@@ -125,13 +125,13 @@ async function users(box) {
     { k: 'active', l: 'Active', f: r => r.active ? badge('ACTIVE') : badge('SUSPENDED') }, { k: 'created_at', l: 'Created', t: 'dt' }], rows, { click: true });
   const roles = ['OWNER', 'MANAGER', 'SALES', 'ACCOUNTANT', 'STOCK'];
   bindRows(box.querySelector('#t'), rows, async u => {
-    const v = await ask('Edit ' + u.username, [{ name: 'fullName', label: 'Name', value: u.full_name }, { name: 'role', label: 'Role', type: 'select', options: roles, value: u.role },
+    const v = await ask('Edit ' + u.username, [{ name: 'full_name', label: 'Name', value: u.full_name }, { name: 'role', label: 'Role', type: 'select', options: roles, value: u.role },
       { name: 'password', label: 'New password (leave blank to keep)', type: 'password' }, { name: 'active', label: 'Active', type: 'checkbox', value: u.active }]);
     if (!v) return;
     try { await api('/users/' + u.id, { method: 'PUT', body: v }); toast('Saved.', 'ok'); users(box); } catch (e) { fail(e); }
   });
   box.querySelector('#new').onclick = async () => {
-    const v = await ask('New user', [{ name: 'username', label: 'Username', required: true }, { name: 'fullName', label: 'Full name' },
+    const v = await ask('New user', [{ name: 'username', label: 'Username', required: true }, { name: 'full_name', label: 'Full name' },
       { name: 'role', label: 'Role', type: 'select', options: roles, value: 'SALES' }, { name: 'password', label: 'Password (min 6)', type: 'password', required: true }]);
     if (!v) return;
     try { await api('/users', { method: 'POST', body: v }); toast('User created.', 'ok'); users(box); } catch (e) { fail(e); }
@@ -211,20 +211,20 @@ export async function platform(el) {
     <div><form class="card" id="nf"><h2>Onboard a new shop</h2>
       <div class="field"><label>Shop code (used to sign in)</label><input name="code" required pattern="[a-z][a-z0-9]{1,19}" placeholder="e.g. tanishq01"></div>
       <div class="field"><label>Shop name</label><input name="name" required></div>
-      <div class="field"><label>Database</label><select name="storageMode"><option value="LOCAL">Local — file database on the shop server (works with no internet)</option>
+      <div class="field"><label>Database</label><select name="storage_mode"><option value="LOCAL">Local — file database on the shop server (works with no internet)</option>
         <option value="CLOUD">Cloud — separate PostgreSQL database</option></select></div>
-      <div class="field"><label>Owner username</label><input name="ownerUsername" value="owner" required></div>
-      <div class="field"><label>Owner name</label><input name="ownerName"></div>
-      <div class="field"><label>Owner password</label><input name="ownerPassword" type="password" minlength="6" required></div>
+      <div class="field"><label>Owner username</label><input name="owner_username" value="owner" required></div>
+      <div class="field"><label>Owner name</label><input name="owner_name"></div>
+      <div class="field"><label>Owner password</label><input name="owner_password" type="password" minlength="6" required></div>
       <button class="primary">Create shop and database</button></form>
       <form class="card" id="rf"><h2>Restore a backup as a new shop</h2>
         <div class="field"><label>Backup file (.swarn)</label><input type="file" name="file" required accept=".swarn"></div>
         <div class="field"><label>Backup password</label><input type="password" name="password" required></div>
         <div class="field"><label>New shop code</label><input name="code" required></div>
-        <div class="field"><label>Database</label><select name="storageMode"><option>LOCAL</option><option>CLOUD</option></select></div>
+        <div class="field"><label>Database</label><select name="storage_mode"><option>LOCAL</option><option>CLOUD</option></select></div>
         <button>Restore</button></form></div></div></div>`;
-  el.querySelector('#t').innerHTML = table([{ k: 'code', l: 'Code' }, { k: 'name', l: 'Name' }, { k: 'storageMode', l: 'Mode', t: 'badge' },
-    { k: 'database', l: 'Database', f: r => `<code class="small">${esc(r.database)}</code>` }, { k: 'schemaVersion', l: 'Schema' },
+  el.querySelector('#t').innerHTML = table([{ k: 'code', l: 'Code' }, { k: 'name', l: 'Name' }, { k: 'storage_mode', l: 'Mode', t: 'badge' },
+    { k: 'database', l: 'Database', f: r => `<code class="small">${esc(r.database)}</code>` }, { k: 'schema_version', l: 'Schema' },
     { k: 'status', l: 'Status', f: r => `${badge(r.status)} <button class="small" data-code="${esc(r.code)}" data-s="${r.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'}">${r.status === 'ACTIVE' ? 'Suspend' : 'Activate'}</button>` }],
   tenants, { resp: false });
   el.querySelectorAll('[data-code]').forEach(b => b.onclick = async () => {
@@ -233,7 +233,7 @@ export async function platform(el) {
   el.querySelector('#nf').onsubmit = async e => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target));
-    try { const t = await papi('/tenants', { method: 'POST', body }); toast(`Shop ${t.code} created with its own ${t.storageMode.toLowerCase()} database.`, 'ok'); platform(el); } catch (err) { fail(err); }
+    try { const t = await papi('/tenants', { method: 'POST', body }); toast(`Shop ${t.code} created with its own ${t.storage_mode.toLowerCase()} database.`, 'ok'); platform(el); } catch (err) { fail(err); }
   };
   el.querySelector('#rf').onsubmit = async e => {
     e.preventDefault();

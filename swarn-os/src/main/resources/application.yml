@@ -11,6 +11,8 @@ spring:
   flyway:
     enabled: false            # migrations run per tenant by TenantProvisioner
   jackson:
+    # API payloads use snake_case keys (e.g. net_payable) for every DTO.
+    property-naming-strategy: SNAKE_CASE
     serialization:
       write-dates-as-timestamps: false
     generator:

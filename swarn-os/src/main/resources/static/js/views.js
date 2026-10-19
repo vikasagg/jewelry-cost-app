@@ -11,7 +11,7 @@ export async function dashboard(el) {
   const r = d.rate.approved;
   const metals = d.stock.by_metal;
   el.innerHTML = `
-    <div class="pagehead"><div><h1>Namaste, ${esc(s.user.fullName.split(' ')[0])}</h1>
+    <div class="pagehead"><div><h1>Namaste, ${esc(s.user.full_name.split(' ')[0])}</h1>
       <p>${fmt.date(d.business_date)} · ${esc(s.shop.name)}</p></div>
       <div class="row">${can('BILL') ? `<a class="btn primary big" href="#/sale/new">New bill</a>` : ''}
       <a class="btn big" href="#/tally">Stock tally</a></div></div>
@@ -121,7 +121,7 @@ export async function rates(el) {
     e.preventDefault();
     const approve = e.submitter?.name === 'approve';
     try {
-      await api('/rates/manual', { method: 'POST', body: { ...perGram(), approveNow: approve } });
+      await api('/rates/manual', { method: 'POST', body: { ...perGram(), approve_now: approve } });
       toast(approve ? 'Rate approved for today.' : 'Rate saved as a proposal.', 'ok');
       window.dispatchEvent(new Event('rate-changed'));
       rates(el);
@@ -189,10 +189,10 @@ export async function ask(el, q) {
     const params = new URLSearchParams();
     if (f.metal) params.set('metal', f.metal);
     if (f.purity) params.set('purity', f.purity);
-    if (f.minPrice) params.set('min_price', f.minPrice);
-    if (f.maxPrice) params.set('max_price', f.maxPrice);
-    if (f.minWt) params.set('min_wt', f.minWt);
-    if (f.maxWt) params.set('max_wt', f.maxWt);
+    if (f.min_price) params.set('min_price', f.min_price);
+    if (f.max_price) params.set('max_price', f.max_price);
+    if (f.min_wt) params.set('min_wt', f.min_wt);
+    if (f.max_wt) params.set('max_wt', f.max_wt);
     if (f.families?.length === 1) params.set('family', f.families[0]);
     sessionStorage.setItem('inv-filters', params.toString());
     location.hash = '#/inventory';

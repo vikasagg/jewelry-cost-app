@@ -92,10 +92,10 @@ export async function item(el, id) {
         { k: 'qty', l: 'Qty', t: 'int' }, { k: 'doc_type', l: 'Document' }, { k: 'status_after', l: 'Status after', t: 'badge' }, { k: 'username', l: 'By' },
         { k: 'note', l: 'Note' }], it.movements)}</div></div>
       <div class="card"><h3>Price at today's rate</h3>${p ? `<div class="totals">
-        ${it.metal ? `<span>${fmt.num(it.net_wt)} g × ${fmt.money(p.rate)}</span><span class="num">${fmt.money(p.metalValue)}</span>
-        <span>Wastage</span><span class="num">${fmt.money(p.wastageValue)}</span><span>Making</span><span class="num">${fmt.money(p.makingValue)}</span>
-        <span>Stones</span><span class="num">${fmt.money(p.stoneValue)}</span>` : ''}
-        <span>Taxable</span><span class="num">${fmt.money(p.taxable)}</span><span>GST ${fmt.num(p.gstPct)}%</span><span class="num">${fmt.money(p.gst)}</span>
+        ${it.metal ? `<span>${fmt.num(it.net_wt)} g × ${fmt.money(p.rate)}</span><span class="num">${fmt.money(p.metal_value)}</span>
+        <span>Wastage</span><span class="num">${fmt.money(p.wastage_value)}</span><span>Making</span><span class="num">${fmt.money(p.making_value)}</span>
+        <span>Stones</span><span class="num">${fmt.money(p.stone_value)}</span>` : ''}
+        <span>Taxable</span><span class="num">${fmt.money(p.taxable)}</span><span>GST ${fmt.num(p.gst_pct)}%</span><span class="num">${fmt.money(p.gst)}</span>
         <span class="grand">Price</span><span class="grand num">${fmt.money(p.total)}</span></div>`
         : '<p class="muted">Approve today\'s rate to see the price.</p>'}</div></div>`;
   el.querySelector('#edit')?.addEventListener('click', async () => {
