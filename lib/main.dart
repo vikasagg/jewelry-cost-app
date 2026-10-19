@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
@@ -17,7 +18,19 @@ Future<void> main() async {
     debugPrint('Local storage unavailable, using memory store: $e');
     store = MemoryStore();
   }
-  runApp(JewelleryCostApp(state: AppState(store)));
+  final state = AppState(store, defaultServerUrl: _sameOriginServer());
+  state.stockSync.start();
+  runApp(JewelleryCostApp(state: state));
+}
+
+/// When the web app is opened from the shop PC itself (PocketBase serves
+/// it from pb_public, e.g. http://192.168.1.10:8090), that PC is the
+/// database server.
+String? _sameOriginServer() {
+  if (!kIsWeb) return null;
+  final u = Uri.base;
+  if (u.host.isEmpty || u.host.endsWith('github.io')) return null;
+  return u.origin;
 }
 
 class JewelleryCostApp extends StatelessWidget {

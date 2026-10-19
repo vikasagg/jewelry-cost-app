@@ -5,6 +5,7 @@ import '../../../app_state.dart';
 import '../../../stock/stock_book.dart';
 import '../../../stock/stock_models.dart';
 import '../../../stock/stock_report.dart';
+import '../../../stock/stock_sync.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import 'stock_count_screen.dart';
@@ -46,8 +47,9 @@ class _StockHomeScreenState extends State<StockHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final book = AppScope.of(context).stock;
+    final sync = AppScope.of(context).stockSync;
     return ListenableBuilder(
-      listenable: book,
+      listenable: Listenable.merge([book, sync]),
       builder: (context, _) {
         final days = book.all();
         final date = _date ?? book.today;
@@ -58,6 +60,12 @@ class _StockHomeScreenState extends State<StockHomeScreen> {
           appBar: AppBar(
             title: const Text('Daily Stock Summary'),
             actions: [
+              IconButton(
+                key: const Key('shopServer'),
+                tooltip: 'Shop PC (database)',
+                icon: const Icon(Icons.dns_outlined),
+                onPressed: () => showServerDialog(context, sync),
+              ),
               IconButton(
                 key: const Key('managerPin'),
                 tooltip: 'Manager PIN',
@@ -76,6 +84,8 @@ class _StockHomeScreenState extends State<StockHomeScreen> {
                     'cost estimates are not affected.',
                     style: TextStyle(color: AppColors.muted, fontSize: 13),
                   ),
+                  const SizedBox(height: 8),
+                  _SyncBar(sync: sync),
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -292,6 +302,66 @@ class StatusChip extends StatelessWidget {
       child: Text(
         status.label,
         style: TextStyle(fontSize: 12, color: fg, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+/// Where counts are saved: shop PC in sync, offline, or this phone only.
+class _SyncBar extends StatelessWidget {
+  const _SyncBar({required this.sync});
+  final StockSync sync;
+
+  @override
+  Widget build(BuildContext context) {
+    final unsent = sync.unsent;
+    final (IconData icon, Color color, String text) = switch (sync.state) {
+      SyncState.off => (
+        Icons.phone_android,
+        AppColors.muted,
+        'Saved on this phone only — tap the server icon to connect the shop PC',
+      ),
+      SyncState.syncing => (
+        Icons.sync,
+        AppColors.goldDeep,
+        'Syncing with shop PC…',
+      ),
+      SyncState.synced => (
+        Icons.cloud_done_outlined,
+        AppColors.ok,
+        'Synced with shop PC'
+            '${sync.lastSync == null ? '' : ' · ${DateFormat('h:mm a').format(sync.lastSync!)}'}',
+      ),
+      SyncState.offline => (
+        Icons.cloud_off_outlined,
+        AppColors.error,
+        'Shop PC not reachable — saved on this phone'
+            '${unsent == 0 ? '' : ' ($unsent day${unsent == 1 ? '' : 's'} to send)'}',
+      ),
+    };
+    return Container(
+      key: const Key('syncBar'),
+      padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: TextStyle(color: color, fontSize: 13)),
+          ),
+          if (sync.enabled)
+            IconButton(
+              key: const Key('syncNow'),
+              tooltip: 'Sync now',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.refresh, color: color),
+              onPressed: sync.state == SyncState.syncing ? null : sync.syncNow,
+            ),
+        ],
       ),
     );
   }

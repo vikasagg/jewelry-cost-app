@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../stock/stock_book.dart';
 import '../../../stock/stock_models.dart';
+import '../../../stock/stock_sync.dart';
 import '../../theme.dart';
 
 // Dialog text controllers are left to the garbage collector: disposing them
@@ -332,4 +333,96 @@ Future<bool> showAdjustmentDialog(
     ),
   );
   return ok == true;
+}
+
+/// Sets the shop PC address (PocketBase), with a connection test.
+Future<void> showServerDialog(BuildContext context, StockSync sync) async {
+  final url = TextEditingController(text: sync.serverUrl);
+  String? message;
+  var ok = false;
+  var testing = false;
+  final save = await showDialog<bool>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setLocal) {
+        Future<void> test() async {
+          final u = StockSync.normalise(url.text);
+          if (u.isEmpty) {
+            setLocal(() {
+              ok = false;
+              message = 'Enter the PC address, e.g. 192.168.1.10:8090';
+            });
+            return;
+          }
+          setLocal(() => testing = true);
+          final err = await sync.test(u);
+          setLocal(() {
+            testing = false;
+            ok = err == null;
+            message = err ?? 'Connected to $u';
+          });
+        }
+
+        return AlertDialog(
+          title: const Text('Shop PC (database)'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Stock counts are saved on this phone and shared through '
+                  'PocketBase on the shop PC. Enter the PC address shown by '
+                  'ipconfig, with port 8090.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  key: const Key('serverUrl'),
+                  controller: url,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'PC address',
+                    hintText: '192.168.1.10:8090',
+                    prefixIcon: Icon(Icons.dns_outlined),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (testing)
+                  const LinearProgressIndicator()
+                else if (message != null)
+                  Text(
+                    message!,
+                    key: const Key('serverMessage'),
+                    style: TextStyle(
+                      color: ok ? AppColors.ok : AppColors.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              key: const Key('serverTest'),
+              onPressed: testing ? null : test,
+              child: const Text('Test'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('serverSave'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  if (save == true) await sync.setServerUrl(url.text);
 }

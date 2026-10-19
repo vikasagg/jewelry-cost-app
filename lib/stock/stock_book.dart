@@ -17,7 +17,8 @@ class StockException implements Exception {
 }
 
 /// Daily stock counts, their approvals and audit trail, stored locally
-/// (works offline) under their own keys — separate from price history.
+/// (works offline) under their own keys — separate from price history —
+/// and shared with the shop PC's database by StockSync when one is set.
 ///
 /// Rules:
 /// * A day's expected opening is the previous *verified* day's physical
@@ -72,7 +73,52 @@ class StockBook extends ChangeNotifier {
 
   Future<void> _save(DailyStock day) async {
     await _store.put('$_dayPrefix${day.date}', jsonEncode(day.toJson()));
+    await _markChanged(day.date);
     notifyListeners();
+  }
+
+  // ------------------------------------------------------------ server sync
+
+  static const _changedPrefix = 'stock_changed_';
+
+  /// Told when a day changes on this device, so it can be sent to the
+  /// shop PC (see StockSync).
+  void Function(String date)? onLocalChange;
+
+  Future<void> _markChanged(String date) async {
+    await _store.put(
+      '$_changedPrefix$date',
+      _clock().microsecondsSinceEpoch.toString(),
+    );
+    onLocalChange?.call(date);
+  }
+
+  /// Days changed here and not yet sent to the server.
+  List<String> get unsentDates => [
+    for (final k in _store.keys.where((k) => k.startsWith(_changedPrefix)))
+      k.substring(_changedPrefix.length),
+  ];
+
+  /// Marks of the local change [date] is at; pass it back to [markSent]
+  /// once that version reached the server.
+  String? changeMark(String date) => _store.get('$_changedPrefix$date');
+
+  /// Clears the "not sent" flag, unless the day changed again meanwhile.
+  Future<void> markSent(String date, String? mark) async {
+    if (mark != null && changeMark(date) == mark) {
+      await _store.delete('$_changedPrefix$date');
+    }
+  }
+
+  /// Stores a day received from the server, unless this device has
+  /// changes to it that are not sent yet (those win and go up next).
+  Future<bool> applyRemote(DailyStock day) async {
+    if (changeMark(day.date) != null) return false;
+    final raw = jsonEncode(day.toJson());
+    if (_store.get('$_dayPrefix${day.date}') == raw) return false;
+    await _store.put('$_dayPrefix${day.date}', raw);
+    notifyListeners();
+    return true;
   }
 
   /// The most recent earlier count (any status) — shown as "Last day".
@@ -226,19 +272,32 @@ class StockBook extends ChangeNotifier {
   Future<DateTime?> autosave(DailyStock d) async {
     if (d.status != StockStatus.draft) return null;
     final at = _clock();
-    await _store.put(
-      '$_dayPrefix${d.date}',
-      jsonEncode(d.copyWith(savedAt: at).toJson()),
-    );
+    final previous = _store.get('$_dayPrefix${d.date}');
+    final next = d.copyWith(savedAt: at).toJson();
+    await _store.put('$_dayPrefix${d.date}', jsonEncode(next));
     await _store.put(
       _sessionKey,
       jsonEncode({'date': d.date, 'savedAt': at.toIso8601String()}),
     );
+    if (previous == null || !_sameIgnoringSaveTime(previous, next)) {
+      await _markChanged(d.date);
+    }
     if (d.employee.trim().isNotEmpty) {
       await _store.put(_employeeKey, d.employee.trim());
     }
     notifyListeners();
     return at;
+  }
+
+  static bool _sameIgnoringSaveTime(String raw, Map<String, dynamic> next) {
+    try {
+      final a = Map<String, dynamic>.from(jsonDecode(raw) as Map)
+        ..remove('savedAt');
+      final b = Map<String, dynamic>.from(next)..remove('savedAt');
+      return jsonEncode(a) == jsonEncode(b);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// The last auto-saved count session: its date and save time.

@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../app_state.dart';
 import '../../../stock/stock_book.dart';
 import '../../../stock/stock_models.dart';
+import '../../../stock/stock_sync.dart';
 import '../../../stock/stock_report.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
@@ -113,6 +114,41 @@ class _StockCountScreenState extends State<StockCountScreen> {
     }
   }
 
+  List<StaffMember> get _staff => AppScope.read(context).stockSync.staff;
+
+  /// Staff list from the shop PC.
+  Future<void> _pickStaff() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text(
+                'Who is counting?',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final s in _staff)
+              ListTile(
+                key: Key('staff_${s.name}'),
+                leading: const Icon(Icons.person_outline),
+                title: Text(s.name),
+                subtitle: Text('+91 ${s.phone}'),
+                selected: s.name == _employee.text.trim(),
+                onTap: () => Navigator.pop(context, s.name),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _employee.text = picked;
+    setState(() => _nameError = false);
+    await _saveEmployee();
+  }
+
   Future<void> _saveNote() async {
     if (_editable && _note.text.trim() != _day.note) {
       await _do(() => _book.setNote(_day, _note.text));
@@ -124,7 +160,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
     // The employee name is mandatory before counting.
     if (_employee.text.trim().isEmpty) {
       setState(() => _nameError = true);
-      _employeeFocus.requestFocus();
+      _staff.isNotEmpty ? _pickStaff() : _employeeFocus.requestFocus();
       _snack('Enter your name first');
       return;
     }
@@ -183,7 +219,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
   Future<void> _submit() async {
     if (_employee.text.trim().isEmpty) {
       setState(() => _nameError = true);
-      _employeeFocus.requestFocus();
+      _staff.isNotEmpty ? _pickStaff() : _employeeFocus.requestFocus();
       _snack('Enter your name first');
       return;
     }
@@ -405,10 +441,16 @@ class _StockCountScreenState extends State<StockCountScreen> {
                 controller: _employee,
                 focusNode: _employeeFocus,
                 enabled: _editable,
+                // With a staff list from the shop PC, pick a name.
+                readOnly: _staff.isNotEmpty,
+                onTap: _staff.isNotEmpty ? _pickStaff : null,
                 textCapitalization: TextCapitalization.words,
                 decoration: InputDecoration(
                   labelText: 'Employee name *',
                   prefixIcon: const Icon(Icons.person_outline),
+                  suffixIcon: _staff.isNotEmpty && _editable
+                      ? const Icon(Icons.arrow_drop_down)
+                      : null,
                   errorText: _nameError && _employee.text.trim().isEmpty
                       ? 'Name is required'
                       : null,
