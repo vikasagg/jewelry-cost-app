@@ -1,0 +1,53 @@
+# Deployment-level settings (BRD §16). Business rules live in each shop's
+# app_config table and are edited from Settings in the app.
+server:
+  port: ${PORT:8080}
+  compression:
+    enabled: true
+
+spring:
+  application:
+    name: jewellery-erp
+  flyway:
+    enabled: false            # migrations run per tenant by TenantProvisioner
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    generator:
+      write-bigdecimal-as-plain: true
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+
+app:
+  # Folder for the control database, local (in-shop) tenant databases and backups.
+  data-dir: ${ERP_DATA_DIR:./data}
+  zone: Asia/Kolkata
+  # Signs login tokens. Leave blank to generate one and keep it in data-dir.
+  token-secret: ${ERP_TOKEN_SECRET:}
+  token-hours: 12
+
+  # Platform operator login (creates shops / tenants).
+  platform:
+    username: ${ERP_PLATFORM_USER:platform}
+    password: ${ERP_PLATFORM_PASSWORD:platform@123}
+
+  # Control database: tenant registry only. Default is a local H2 file.
+  control-db:
+    url: ${ERP_CONTROL_DB_URL:}
+    username: ${ERP_CONTROL_DB_USER:sa}
+    password: ${ERP_CONTROL_DB_PASSWORD:}
+
+  # Server used for CLOUD tenants. Each shop gets its own database on it.
+  cloud-postgres:
+    host: ${ERP_PG_HOST:localhost}
+    port: ${ERP_PG_PORT:5432}
+    username: ${ERP_PG_USER:postgres}
+    password: ${ERP_PG_PASSWORD:postgres}
+    database-prefix: jewel_
+
+  # Create a demo shop with sample stock on first start.
+  demo:
+    enabled: ${ERP_DEMO:true}
+    storage-mode: ${ERP_DEMO_STORAGE:LOCAL}   # LOCAL (H2 file) or CLOUD (PostgreSQL)

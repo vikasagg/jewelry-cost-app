@@ -1,0 +1,9 @@
+{
+  "name": "AI Jewellery ERP",
+  "short_name": "Jewel ERP",
+  "start_url": "./#/",
+  "display": "standalone",
+  "background_color": "#fbf7ef",
+  "theme_color": "#2b2118",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
