@@ -41,6 +41,19 @@ The status bar on the Stock screen shows "Synced with shop PC", or
 "Shop PC not reachable — saved on this phone" (counts are sent when the PC
 is back).
 
+## Personal PINs
+
+* Every staff member creates their own PIN (4–8 digits): Stock screen →
+  key icon "My PIN", or the first time they start a count.
+* Starting a count needs the counter's PIN; approving (verify,
+  adjustment, reopen) needs the approver's PIN.
+* The person who counted cannot approve the same count — the app and the
+  PC both refuse it.
+* PINs are stored on the PC only as salted hashes (hidden from the API).
+  5 wrong tries lock that person for 5 minutes.
+* Forgotten PIN: admin panel → `staff` → that person → clear `pin_hash`,
+  then they create a new one.
+
 ## Staff
 
 Add, edit or deactivate staff in the admin panel: `http://127.0.0.1:8090/_/`
@@ -51,5 +64,4 @@ Add, edit or deactivate staff in the admin panel: `http://127.0.0.1:8090/_/`
 * Anyone on the shop Wi-Fi can read and save stock counts (no login yet);
   deleting a day is only possible in the admin panel. Keep the Wi-Fi
   password private.
-* The manager PIN is still set per phone.
 * Back up the `pb_data` folder (all data) regularly.

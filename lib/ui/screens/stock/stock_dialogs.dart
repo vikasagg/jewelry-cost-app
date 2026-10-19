@@ -25,17 +25,26 @@ TextField _pinField(TextEditingController c, String label, Key key) =>
 
 /// Who approves: picked from the shop PC's staff list when there is one
 /// (so the database gets the exact name), else typed.
-Widget _managerField(BuildContext context, TextEditingController name) {
+/// The person who counted ([exclude]) is left out: they cannot approve.
+Widget _managerField(
+  BuildContext context,
+  TextEditingController name, {
+  String? exclude,
+}) {
   final staff = AppScope.read(context).stockSync.staff;
   if (staff.isEmpty) {
     return TextField(
       key: const Key('managerName'),
       controller: name,
       textCapitalization: TextCapitalization.words,
-      decoration: const InputDecoration(labelText: 'Manager name'),
+      decoration: const InputDecoration(labelText: 'Approved by (name)'),
     );
   }
-  final names = [for (final s in staff) s.name];
+  final ex = exclude?.trim().toLowerCase() ?? '';
+  final names = [
+    for (final s in staff)
+      if (s.name.trim().toLowerCase() != ex) s.name,
+  ];
   return DropdownButtonFormField<String>(
     key: const Key('managerName'),
     initialValue: names.contains(name.text) ? name.text : null,
@@ -46,8 +55,23 @@ Widget _managerField(BuildContext context, TextEditingController name) {
   );
 }
 
-/// Sets (or changes) the manager PIN.
-Future<void> showSetPinDialog(BuildContext context, StockBook book) async {
+Widget _error(String? error) => error == null
+    ? const SizedBox.shrink()
+    : Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          error,
+          key: const Key('pinError'),
+          style: const TextStyle(color: AppColors.error),
+        ),
+      );
+
+/// "My PIN": a staff member creates their own PIN, or changes it.
+Future<void> showMyPinDialog(BuildContext context, StockBook book) async {
+  final staff = AppScope.read(context).stockSync.staff;
+  final name = TextEditingController(
+    text: staff.length == 1 ? staff.first.name : '',
+  );
   final current = TextEditingController();
   final pin = TextEditingController();
   final again = TextEditingController();
@@ -55,64 +79,164 @@ Future<void> showSetPinDialog(BuildContext context, StockBook book) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (context) => StatefulBuilder(
+      builder: (context, setLocal) {
+        final has = name.text.trim().isNotEmpty && book.pins.hasPin(name.text);
+        return AlertDialog(
+          title: Text(has ? 'Change my PIN' : 'Create my PIN'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Everyone has their own PIN: to start a stock count and '
+                    'to approve someone else\'s.',
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                  if (staff.isEmpty)
+                    TextField(
+                      key: const Key('myPinName'),
+                      controller: name,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Your name'),
+                      onChanged: (_) => setLocal(() {}),
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      key: const Key('myPinName'),
+                      initialValue: name.text.isEmpty ? null : name.text,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Your name'),
+                      items: [
+                        for (final s in staff)
+                          DropdownMenuItem(
+                            value: s.name,
+                            child: Text(
+                              '${s.name}${book.pins.hasPin(s.name) ? '' : ' (no PIN yet)'}',
+                            ),
+                          ),
+                      ],
+                      onChanged: (v) => setLocal(() => name.text = v ?? ''),
+                    ),
+                  if (has)
+                    _pinField(current, 'Current PIN', const Key('pinCurrent')),
+                  _pinField(pin, 'New PIN (4–8 digits)', const Key('pinNew')),
+                  _pinField(again, 'Repeat new PIN', const Key('pinAgain')),
+                  _error(error),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('pinSave'),
+              onPressed: () async {
+                if (name.text.trim().isEmpty) {
+                  setLocal(() => error = 'Choose your name');
+                  return;
+                }
+                if (pin.text != again.text) {
+                  setLocal(() => error = 'The two PINs do not match');
+                  return;
+                }
+                try {
+                  await book.pins.setPin(
+                    name.text,
+                    pin.text,
+                    currentPin: current.text,
+                  );
+                  if (context.mounted) Navigator.pop(context, true);
+                } on StockException catch (e) {
+                  setLocal(() => error = e.message);
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  if (ok == true && context.mounted) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('PIN saved for ${name.text}')));
+  }
+}
+
+/// The counter signs in: enters their PIN, or creates it the first time.
+/// Returns the PIN once it is accepted (null when cancelled).
+Future<String?> showPinEntry(
+  BuildContext context,
+  StockBook book,
+  String name,
+) async {
+  final creating = !book.pins.hasPin(name);
+  final pin = TextEditingController();
+  final again = TextEditingController();
+  String? error;
+  return showDialog<String>(
+    context: context,
+    builder: (context) => StatefulBuilder(
       builder: (context, setLocal) => AlertDialog(
-        title: Text(
-          book.hasManagerPin ? 'Change manager PIN' : 'Set manager PIN',
-        ),
-        content: SingleChildScrollView(
+        title: Text(creating ? 'Create your PIN, $name' : 'PIN for $name'),
+        content: SizedBox(
+          width: double.maxFinite,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Managers use this PIN to verify daily counts, approve stock '
-                'adjustments and reopen verified days.',
-                style: TextStyle(color: AppColors.muted),
+              Text(
+                creating
+                    ? 'First time: choose a 4–8 digit PIN. You will enter it '
+                          'each time you start a stock count.'
+                    : 'Enter your PIN to start counting.',
+                style: const TextStyle(color: AppColors.muted),
               ),
-              if (book.hasManagerPin)
-                _pinField(current, 'Current PIN', const Key('pinCurrent')),
-              _pinField(pin, 'New PIN (4–8 digits)', const Key('pinNew')),
-              _pinField(again, 'Repeat new PIN', const Key('pinAgain')),
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    error!,
-                    style: const TextStyle(color: AppColors.error),
-                  ),
-                ),
+              _pinField(
+                pin,
+                creating ? 'New PIN (4–8 digits)' : 'Your PIN',
+                const Key('userPin'),
+              ),
+              if (creating)
+                _pinField(again, 'Repeat new PIN', const Key('userPinAgain')),
+              _error(error),
             ],
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            key: const Key('pinSave'),
+            key: const Key('userPinOk'),
             onPressed: () async {
-              if (pin.text != again.text) {
+              if (creating && pin.text != again.text) {
                 setLocal(() => error = 'The two PINs do not match');
                 return;
               }
               try {
-                await book.setManagerPin(pin.text, currentPin: current.text);
-                if (context.mounted) Navigator.pop(context, true);
+                creating
+                    ? await book.pins.setPin(name, pin.text)
+                    : await book.pins.verify(name, pin.text);
+                if (context.mounted) Navigator.pop(context, pin.text);
               } on StockException catch (e) {
                 setLocal(() => error = e.message);
               }
             },
-            child: const Text('Save'),
+            child: const Text('OK'),
           ),
         ],
       ),
     ),
   );
-  if (ok == true && context.mounted) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Manager PIN saved')));
-  }
 }
 
 /// Asks a manager to authorise an action. [run] performs it and may throw
@@ -123,12 +247,9 @@ Future<bool> showManagerDialog(
   required String title,
   required String message,
   bool needReason = false,
+  String? counter,
   required Future<void> Function(String manager, String pin, String reason) run,
 }) async {
-  if (!book.hasManagerPin) {
-    await showSetPinDialog(context, book);
-    if (!book.hasManagerPin || !context.mounted) return false;
-  }
   final name = TextEditingController();
   final pin = TextEditingController();
   final reason = TextEditingController();
@@ -143,8 +264,8 @@ Future<bool> showManagerDialog(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(message, style: const TextStyle(color: AppColors.muted)),
-              _managerField(context, name),
-              _pinField(pin, 'Manager PIN', const Key('managerPinField')),
+              _managerField(context, name, exclude: counter),
+              _pinField(pin, 'Approver PIN', const Key('managerPinField')),
               if (needReason)
                 TextField(
                   key: const Key('managerReason'),
@@ -226,6 +347,7 @@ Future<String?> showRemarkDialog(
 Future<bool> showAdjustmentDialog(
   BuildContext context,
   StockBook book, {
+  String? counter,
   required Future<void> Function(
     String code,
     int qty,
@@ -235,10 +357,6 @@ Future<bool> showAdjustmentDialog(
   )
   run,
 }) async {
-  if (!book.hasManagerPin) {
-    await showSetPinDialog(context, book);
-    if (!book.hasManagerPin || !context.mounted) return false;
-  }
   var code = stockItems.first.code;
   var sign = 1;
   final qty = TextEditingController();
@@ -310,8 +428,8 @@ Future<bool> showAdjustmentDialog(
                     hintText: 'e.g. 2 received from workshop',
                   ),
                 ),
-                _managerField(context, name),
-                _pinField(pin, 'Manager PIN', const Key('managerPinField')),
+                _managerField(context, name, exclude: counter),
+                _pinField(pin, 'Approver PIN', const Key('managerPinField')),
                 if (error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),

@@ -11,6 +11,7 @@ import 'package:jewellery_cost/stock/stock_sync.dart';
 /// A tiny in-memory PocketBase: staff and stock_days records.
 class FakePocketBase {
   final days = <String, Map<String, dynamic>>{}; // id -> record
+  final pins = <String, String>{}; // name -> PIN (the real PC stores a hash)
   var up = true;
   var nextId = 0;
   final staff = [
@@ -28,6 +29,31 @@ class FakePocketBase {
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
     if (p == '/api/health') return ok({'code': 200});
+    if (p == '/api/damiyaas/pin/status') {
+      return ok({
+        'items': [
+          for (final m in staff)
+            {'name': m['name'], 'has_pin': pins.containsKey(m['name'])},
+        ],
+      });
+    }
+    if (p == '/api/damiyaas/pin/set' || p == '/api/damiyaas/pin/check') {
+      final b = jsonDecode(utf8.decode(req.bodyBytes)) as Map;
+      final name = b['name'] as String;
+      http.Response err(int code, String m) =>
+          http.Response.bytes(utf8.encode(jsonEncode({'message': m})), code);
+      if (p.endsWith('/set')) {
+        if (pins.containsKey(name) && pins[name] != b['current']) {
+          return err(401, 'Current PIN is incorrect');
+        }
+        pins[name] = b['pin'] as String;
+        return ok({'ok': true});
+      }
+      if (!pins.containsKey(name)) return err(409, 'No PIN set yet');
+      return pins[name] == b['pin']
+          ? ok({'ok': true})
+          : err(401, 'Incorrect PIN');
+    }
     if (p == '/api/collections/staff/records') {
       return ok({'items': staff, 'totalPages': 1});
     }
@@ -181,5 +207,52 @@ void main() {
     // A real change is sent.
     await book.autosave(book.byDate(day.date)!.copyWith(note: 'checked'));
     expect(book.unsentDates, [day.date]);
+  });
+
+  test('personal PINs live on the shop PC and work on every phone', () async {
+    final pc = FakePocketBase();
+    final storeA = MemoryStore(), storeB = MemoryStore();
+    final bookA = StockBook(storeA), bookB = StockBook(storeB);
+    final a = StockSync(storeA, bookA, client: pc.client);
+    final b = StockSync(storeB, bookB, client: pc.client);
+    for (final s in [storeA, storeB]) {
+      await s.put('stock_server_url', 'http://pc:8090');
+    }
+    await a.syncNow();
+    expect(bookA.pins.hasPin('Anil'), isFalse);
+
+    // Anil creates his PIN on phone A; it is saved on the PC.
+    await bookA.pins.setPin('Anil', '4321');
+    expect(pc.pins['Anil'], '4321');
+
+    // Phone B learns Anil has a PIN and checks it against the PC.
+    await b.syncNow();
+    expect(bookB.pins.hasPin('Anil'), isTrue);
+    await expectLater(
+      bookB.pins.verify('Anil', '0000'),
+      throwsA(
+        isA<StockException>().having((e) => e.message, 'm', 'Incorrect PIN'),
+      ),
+    );
+    await bookB.pins.verify('Anil', '4321');
+
+    // PC off: a PIN already checked on this phone still works…
+    pc.up = false;
+    await bookB.pins.verify('Anil', '4321');
+    // …but one never checked here cannot be confirmed.
+    await expectLater(
+      bookB.pins.verify('Bhavna', '1111'),
+      throwsA(
+        isA<StockException>().having(
+          (e) => e.message,
+          'm',
+          contains('not reachable'),
+        ),
+      ),
+    );
+    await expectLater(
+      bookB.pins.setPin('Bhavna', '1111'),
+      throwsA(isA<StockException>()),
+    );
   });
 }

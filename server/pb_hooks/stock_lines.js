@@ -1,5 +1,14 @@
 // Expands a stock_days record's "lines" into stock_count_items rows.
 module.exports = {
+  checkApprover: (day) => {
+    const counted = day.getString("counted_by").trim().toLowerCase();
+    const approved = day.getString("approved_by").trim().toLowerCase();
+    if (counted && counted === approved) {
+      throw new BadRequestError(
+        "The person who counted cannot approve the same count.",
+      );
+    }
+  },
   sync: (app, day) => {
     let lines;
     try {

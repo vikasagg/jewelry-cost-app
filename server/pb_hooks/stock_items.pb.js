@@ -11,3 +11,15 @@ onRecordAfterUpdateSuccess((e) => {
   require(`${__hooks}/stock_lines.js`).sync(e.app, e.record);
   e.next();
 }, "stock_days");
+
+// The person who counted may not approve their own count (also checked
+// in the app; this stops it being bypassed).
+onRecordCreateRequest((e) => {
+  require(`${__hooks}/stock_lines.js`).checkApprover(e.record);
+  e.next();
+}, "stock_days");
+
+onRecordUpdateRequest((e) => {
+  require(`${__hooks}/stock_lines.js`).checkApprover(e.record);
+  e.next();
+}, "stock_days");

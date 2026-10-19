@@ -47,6 +47,33 @@ class StockServer {
     'content-type': 'application/json; charset=utf-8',
   };
 
+  /// Which staff have a PIN: name → true/false.
+  Future<Map<String, bool>> pinStatus() async {
+    final j = await _json(_http.get(_u('api/damiyaas/pin/status')));
+    return {
+      for (final r in (j['items'] as List).cast<Map>())
+        r['name'] as String: r['has_pin'] == true,
+    };
+  }
+
+  /// Creates or changes [name]'s PIN on the PC.
+  Future<void> setPin(String name, String pin, String? current) => _json(
+    _http.post(
+      _u('api/damiyaas/pin/set'),
+      headers: _jsonHeaders,
+      body: jsonEncode({'name': name, 'pin': pin, 'current': current ?? ''}),
+    ),
+  );
+
+  /// Checks [name]'s PIN on the PC (StockServerException if wrong).
+  Future<void> checkPin(String name, String pin) => _json(
+    _http.post(
+      _u('api/damiyaas/pin/check'),
+      headers: _jsonHeaders,
+      body: jsonEncode({'name': name, 'pin': pin}),
+    ),
+  );
+
   /// True when the server answers.
   Future<void> ping() => _json(_http.get(_u('api/health')));
 
@@ -172,8 +199,67 @@ class StockServerException implements Exception {
   StockServerException(this.status, this.body);
   final int status;
   final String body;
+
+  /// The server's own message, e.g. "Incorrect PIN".
+  String get message {
+    try {
+      final m = (jsonDecode(body) as Map)['message'];
+      if (m is String && m.isNotEmpty) return m;
+    } catch (_) {}
+    return 'Server error $status';
+  }
+
   @override
-  String toString() => 'Server error $status';
+  String toString() => message;
+}
+
+/// Personal PINs kept on the shop PC (when one is set), with a copy of
+/// each PIN checked here so counting still works if the PC is off.
+class SyncedStaffPins implements StaffPins {
+  SyncedStaffPins(this._sync, this._local);
+  final StockSync _sync;
+  final LocalStaffPins _local;
+
+  @override
+  bool hasPin(String name) {
+    if (!_sync.enabled) return _local.hasPin(name);
+    final known = _sync._pinStatus[name.trim()];
+    return known ?? _local.hasPin(name);
+  }
+
+  @override
+  Future<void> setPin(String name, String pin, {String? currentPin}) async {
+    if (!_sync.enabled) {
+      return _local.setPin(name, pin, currentPin: currentPin);
+    }
+    if (!StockBook.validPin(pin)) {
+      throw StockException('PIN must be 4–8 digits');
+    }
+    try {
+      await _sync._server.setPin(name.trim(), pin, currentPin);
+    } on StockServerException catch (e) {
+      throw StockException(e.message);
+    } catch (_) {
+      throw StockException('Shop PC not reachable — connect to set a PIN');
+    }
+    await _local.remember(name, pin);
+    await _sync._setPinStatus(name.trim(), true);
+  }
+
+  @override
+  Future<void> verify(String name, String pin) async {
+    if (!_sync.enabled) return _local.verify(name, pin);
+    try {
+      await _sync._server.checkPin(name.trim(), pin);
+    } on StockServerException catch (e) {
+      throw StockException(e.message);
+    } catch (_) {
+      // PC off: accept a PIN already checked on this phone.
+      if (_local.hasPin(name)) return _local.verify(name, pin);
+      throw StockException('Shop PC not reachable — cannot check the PIN');
+    }
+    await _local.remember(name, pin);
+  }
 }
 
 enum SyncState { off, syncing, synced, offline }
@@ -194,6 +280,7 @@ class StockSync extends ChangeNotifier {
        _clock = clock ?? DateTime.now,
        _defaultUrl = defaultUrl {
     _book.onLocalChange = (_) => _schedulePush();
+    _book.pins = SyncedStaffPins(this, LocalStaffPins(_store));
   }
 
   final KeyValueStore _store;
@@ -205,6 +292,24 @@ class StockSync extends ChangeNotifier {
 
   static const _urlKey = 'stock_server_url';
   static const _staffKey = 'stock_staff';
+  static const _pinStatusKey = 'stock_pin_status';
+
+  /// Which staff have created a PIN (from the PC; kept for offline use).
+  Map<String, bool> get _pinStatus {
+    final raw = _store.get(_pinStatusKey);
+    if (raw == null) return const {};
+    try {
+      return (jsonDecode(raw) as Map).cast<String, bool>();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _setPinStatus(String name, bool has) async {
+    await _store.put(_pinStatusKey, jsonEncode({..._pinStatus, name: has}));
+    notifyListeners();
+  }
+
   static const _idPrefix = 'stock_rid_';
   static const _formatKey = 'stock_sync_format';
 
@@ -313,6 +418,7 @@ class StockSync extends ChangeNotifier {
     notifyListeners();
     try {
       final server = _server;
+      String? rejected;
       final resend = pushAll || _store.get(_formatKey) != recordFormat;
       final dates = resend
           ? [for (final d in _book.all()) d.date]
@@ -324,12 +430,19 @@ class StockSync extends ChangeNotifier {
           await _book.markSent(date, mark);
           continue;
         }
-        final id = await server.put(
-          day,
-          knownId: _store.get('$_idPrefix$date'),
-        );
-        await _store.put('$_idPrefix$date', id);
-        await _book.markSent(date, mark);
+        try {
+          final id = await server.put(
+            day,
+            knownId: _store.get('$_idPrefix$date'),
+          );
+          await _store.put('$_idPrefix$date', id);
+          await _book.markSent(date, mark);
+        } on StockServerException catch (e) {
+          // The PC refused this day (e.g. counter approving their own
+          // count): keep it here, carry on with the others.
+          if (e.status != 400) rethrow;
+          rejected = '$date: ${e.message}';
+        }
       }
       for (final (id, day) in await server.days()) {
         await _store.put('$_idPrefix${day.date}', id);
@@ -339,10 +452,15 @@ class StockSync extends ChangeNotifier {
         _staffKey,
         jsonEncode([for (final s in await server.staff()) s.toJson()]),
       );
+      try {
+        await _store.put(_pinStatusKey, jsonEncode(await server.pinStatus()));
+      } on StockServerException {
+        // PC set up before personal PINs: PIN steps not installed yet.
+      }
       await _store.put(_formatKey, recordFormat);
       state = SyncState.synced;
       lastSync = _clock();
-      lastError = null;
+      lastError = rejected;
     } catch (e) {
       state = SyncState.offline;
       lastError = e.toString();

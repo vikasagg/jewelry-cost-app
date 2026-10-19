@@ -68,9 +68,9 @@ class _StockHomeScreenState extends State<StockHomeScreen> {
               ),
               IconButton(
                 key: const Key('managerPin'),
-                tooltip: 'Manager PIN',
-                icon: const Icon(Icons.admin_panel_settings_outlined),
-                onPressed: () => showSetPinDialog(context, book),
+                tooltip: 'My PIN',
+                icon: const Icon(Icons.password),
+                onPressed: () => showMyPinDialog(context, book),
               ),
             ],
           ),
@@ -128,9 +128,10 @@ class _StockHomeScreenState extends State<StockHomeScreen> {
                         ),
                       ),
                     ),
-                  if (!book.hasManagerPin) ...[
+                  if (sync.staff.any((m) => !book.pins.hasPin(m.name))) ...[
                     const SizedBox(height: 10),
                     Container(
+                      key: const Key('pinMissing'),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: AppColors.warnSoft,
@@ -140,15 +141,15 @@ class _StockHomeScreenState extends State<StockHomeScreen> {
                         children: [
                           const Icon(Icons.lock_outline, color: AppColors.warn),
                           const SizedBox(width: 10),
-                          const Expanded(
+                          Expanded(
                             child: Text(
-                              'Set a manager PIN — needed to approve counts '
-                              'and stock adjustments.',
+                              'No PIN yet: ${sync.staff.where((m) => !book.pins.hasPin(m.name)).map((m) => m.name).join(', ')}. '
+                              'Everyone needs their own PIN to count and approve.',
                             ),
                           ),
                           TextButton(
-                            onPressed: () => showSetPinDialog(context, book),
-                            child: const Text('Set PIN'),
+                            onPressed: () => showMyPinDialog(context, book),
+                            child: const Text('Create'),
                           ),
                         ],
                       ),

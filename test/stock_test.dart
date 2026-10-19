@@ -31,7 +31,7 @@ void main() {
       now = DateTime(2026, 10, 17, 10);
       store = MemoryStore();
       book = StockBook(store, clock: clock);
-      await book.setManagerPin('4321');
+      await book.pins.setPin('Asha', '4321');
     });
 
     test(
@@ -169,25 +169,83 @@ void main() {
     );
 
     test(
-      'PIN is stored hashed and can only be changed with the old one',
+      'personal PINs are stored hashed; changing needs the old one',
       () async {
         expect(store.keys.map(store.get), isNot(contains('4321')));
         await expectLater(
-          book.setManagerPin('9999', currentPin: '0000'),
+          book.pins.setPin('Asha', '9999', currentPin: '0000'),
           throwsA(isA<StockException>()),
         );
-        await book.setManagerPin('9999', currentPin: '4321');
-        expect(book.checkPin('9999'), isTrue);
-        expect(book.checkPin('4321'), isFalse);
+        await book.pins.setPin('Asha', '9999', currentPin: '4321');
+        await book.pins.verify('asha', '9999'); // name case ignored
+        await expectLater(
+          book.pins.verify('Asha', '4321'),
+          throwsA(isA<StockException>()),
+        );
+        expect(book.pins.hasPin('Ravi'), isFalse);
       },
     );
+
+    test('the counter signs in with a PIN and cannot approve', () async {
+      var d = await book.open(book.today);
+      await expectLater(
+        book.startCount(d, 'Ravi', '1111'),
+        throwsA(isA<StockException>()), // no PIN yet
+      );
+      await book.pins.setPin('Ravi', '2468');
+      await expectLater(
+        book.startCount(d, 'Ravi', '0000'),
+        throwsA(isA<StockException>()),
+      );
+      d = await book.startCount(d, 'Ravi', '2468');
+      expect(d.employee, 'Ravi');
+      expect(d.audit.last.action, 'Signed in');
+      d = await book.submit(await countAll(book, d));
+
+      // Ravi counted, so Ravi cannot approve — even with his own PIN.
+      await expectLater(
+        book.verify(d, manager: ' ravi ', pin: '2468'),
+        throwsA(
+          isA<StockException>().having(
+            (e) => e.message,
+            'message',
+            contains('cannot approve'),
+          ),
+        ),
+      );
+      await expectLater(
+        book.addAdjustment(
+          d.copyWith(status: StockStatus.draft),
+          code: 'LGR',
+          qty: 1,
+          reason: 'x',
+          manager: 'Ravi',
+          pin: '2468',
+        ),
+        throwsA(isA<StockException>()),
+      );
+      // Someone without a PIN cannot approve either.
+      await expectLater(
+        book.verify(d, manager: 'Meena', pin: '1234'),
+        throwsA(
+          isA<StockException>().having(
+            (e) => e.message,
+            'message',
+            contains('has not created a PIN'),
+          ),
+        ),
+      );
+      d = await book.verify(d, manager: 'Asha', pin: '4321');
+      expect(d.approvedBy, 'Asha');
+      expect(d.employee, 'Ravi');
+    });
   });
 
   test('stock counts never touch prices, rates or estimates', () async {
     final state = AppState(MemoryStore(), clock: clock);
     final rates = GoldRates.fromBase24(perGram24: 10000, updatedAt: now);
     await state.saveRates(rates);
-    await state.stock.setManagerPin('4321');
+    await state.stock.pins.setPin('Asha', '4321');
     var d = await countAll(state.stock, await state.stock.open('2026-10-17'));
     d = await state.stock.setEmployee(d, 'Ravi');
     await state.stock.verify(
@@ -201,7 +259,7 @@ void main() {
 
   test('WhatsApp summary and PDF include every required part', () async {
     final book = StockBook(MemoryStore(), clock: clock);
-    await book.setManagerPin('4321');
+    await book.pins.setPin('Asha', '4321');
     var d = await countAll(book, await book.open('2026-10-17'));
     d = await book.setEmployee(d, 'Ravi');
     d = await book.verify(await book.submit(d), manager: 'Asha', pin: '4321');
@@ -253,8 +311,23 @@ void main() {
     await t.enterText(find.byKey(const Key('stockEmployee')), 'Ravi');
     await t.pump();
 
+    // First count: Ravi creates his own PIN (entered twice).
     await t.tap(find.byKey(const Key('count_LGR')));
     await t.pumpAndSettle();
+    expect(find.text('Create your PIN, Ravi'), findsOneWidget);
+    await t.enterText(find.byKey(const Key('userPin')), '2468');
+    await t.enterText(find.byKey(const Key('userPinAgain')), '2469');
+    await t.tap(find.byKey(const Key('userPinOk')));
+    await t.pumpAndSettle();
+    expect(find.text('The two PINs do not match'), findsOneWidget);
+    await t.enterText(find.byKey(const Key('userPinAgain')), '2468');
+    await t.tap(find.byKey(const Key('userPinOk')));
+    await t.pumpAndSettle();
+    expect(state.stock.pins.hasPin('Ravi'), isTrue);
+    expect(
+      state.stock.byDate(state.stock.today)!.audit.last.action,
+      'Signed in',
+    );
     for (final k in ['1', '2']) {
       await t.tap(find.byKey(Key('key_$k')));
       await t.pump();
@@ -334,8 +407,17 @@ void main() {
     await t.pumpAndSettle();
 
     // 5 + 3 − 1 on the keypad: every entry and the total are shown.
+    await state.stock.pins.setPin('Meena', '1357');
     await t.enterText(find.byKey(const Key('stockEmployee')), 'Meena');
     await t.tap(find.byKey(const Key('count_LGR')));
+    await t.pumpAndSettle();
+    expect(find.text('PIN for Meena'), findsOneWidget);
+    await t.enterText(find.byKey(const Key('userPin')), '0000');
+    await t.tap(find.byKey(const Key('userPinOk')));
+    await t.pumpAndSettle();
+    expect(find.text('Incorrect PIN'), findsOneWidget);
+    await t.enterText(find.byKey(const Key('userPin')), '1357');
+    await t.tap(find.byKey(const Key('userPinOk')));
     await t.pumpAndSettle();
     for (final k in ['5', '+', '3', '−', '1']) {
       await t.tap(find.byKey(Key('key_$k')));
