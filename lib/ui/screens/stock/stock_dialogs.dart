@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../app_state.dart';
 import '../../../stock/stock_book.dart';
 import '../../../stock/stock_models.dart';
 import '../../../stock/stock_sync.dart';
@@ -21,6 +22,29 @@ TextField _pinField(TextEditingController c, String label, Key key) =>
       ],
       decoration: InputDecoration(labelText: label),
     );
+
+/// Who approves: picked from the shop PC's staff list when there is one
+/// (so the database gets the exact name), else typed.
+Widget _managerField(BuildContext context, TextEditingController name) {
+  final staff = AppScope.read(context).stockSync.staff;
+  if (staff.isEmpty) {
+    return TextField(
+      key: const Key('managerName'),
+      controller: name,
+      textCapitalization: TextCapitalization.words,
+      decoration: const InputDecoration(labelText: 'Manager name'),
+    );
+  }
+  final names = [for (final s in staff) s.name];
+  return DropdownButtonFormField<String>(
+    key: const Key('managerName'),
+    initialValue: names.contains(name.text) ? name.text : null,
+    isExpanded: true,
+    decoration: const InputDecoration(labelText: 'Approved by'),
+    items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n))],
+    onChanged: (v) => name.text = v ?? '',
+  );
+}
 
 /// Sets (or changes) the manager PIN.
 Future<void> showSetPinDialog(BuildContext context, StockBook book) async {
@@ -119,12 +143,7 @@ Future<bool> showManagerDialog(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(message, style: const TextStyle(color: AppColors.muted)),
-              TextField(
-                key: const Key('managerName'),
-                controller: name,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Manager name'),
-              ),
+              _managerField(context, name),
               _pinField(pin, 'Manager PIN', const Key('managerPinField')),
               if (needReason)
                 TextField(
@@ -291,12 +310,7 @@ Future<bool> showAdjustmentDialog(
                     hintText: 'e.g. 2 received from workshop',
                   ),
                 ),
-                TextField(
-                  key: const Key('managerName'),
-                  controller: name,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Manager name'),
-                ),
+                _managerField(context, name),
                 _pinField(pin, 'Manager PIN', const Key('managerPinField')),
                 if (error != null)
                   Padding(

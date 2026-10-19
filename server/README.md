@@ -5,8 +5,10 @@ through PocketBase running on the shop PC. Tested with PocketBase 0.40.5.
 
 ## One-time setup
 
-1. Put the `pb_migrations` folder from this zip next to `pocketbase.exe`
-   (e.g. `C:\pocketbase\pb_migrations\1760900000_damiyaas_stock.js`).
+1. Put the `pb_migrations` and `pb_hooks` folders from this zip next to
+   `pocketbase.exe` (e.g. `C:\pocketbase\pb_migrations\…js` and
+   `C:\pocketbase\pb_hooks\…js`). When updating, copy them over the old
+   ones; already-applied steps are skipped.
 2. Stop PocketBase (Ctrl+C) and start it again so phones on the Wi-Fi can
    reach it:
 
@@ -14,9 +16,14 @@ through PocketBase running on the shop PC. Tested with PocketBase 0.40.5.
    pocketbase serve --http=0.0.0.0:8090
    ```
 
-   On start it creates two tables, once:
+   On start it creates the tables, once:
    * `staff` — Anil (7678405443), Bhavna (9205348300), Tanish (9667725005)
-   * `stock_days` — one record per counted day
+   * `stock_days` — one record per counted day: date, status,
+     `counted_by`, `approved_by`, `approved_at`, totals (expected, counted,
+     difference) and the full day
+   * `stock_count_items` — one row per counted item per day: item,
+     expected, counted, difference, remark, keypad working, counted by,
+     approved by, status (kept up to date by `pb_hooks`)
 
 3. Find the PC address with `ipconfig` (IPv4 Address, e.g. `192.168.1.10`).
    Reserve this address in the Wi-Fi router so it does not change.

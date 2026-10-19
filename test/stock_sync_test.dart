@@ -101,7 +101,21 @@ void main() {
     expect(a.state, SyncState.synced);
     expect(bookA.unsentDates, isEmpty);
     expect(pc.days.length, 1);
-    expect(pc.days.values.single['employee'], 'Anil');
+    final rec = pc.days.values.single;
+    expect(rec['counted_by'], 'Anil');
+    expect(rec['approved_by'], '');
+    expect(rec['lines'], [
+      {
+        'code': 'LGR',
+        'item': stockItems.firstWhere((i) => i.code == 'LGR').name,
+        'group': stockItems.firstWhere((i) => i.code == 'LGR').group,
+        'expected': 0,
+        'counted': 5,
+        'difference': null,
+        'remark': '',
+        'working': '',
+      },
+    ]);
     expect(a.staff.map((s) => s.name), ['Anil', 'Bhavna', 'Tanish']);
 
     // Phone B receives it, adds GGR = 2 and sends it back.

@@ -107,15 +107,38 @@ class StockServer {
     return items.isEmpty ? null : (items.first as Map)['id'] as String;
   }
 
+  /// The stock_days record for [d]: who counted, who approved, totals,
+  /// one line per counted item (the server expands these into
+  /// stock_count_items) and the full day for the app.
+  static Map<String, dynamic> record(DailyStock d) => {
+    'date': d.date,
+    'status': d.status.name,
+    'counted_by': d.employee,
+    'approved_by': d.approvedBy ?? '',
+    'approved_at': d.approvedAt?.toUtc().toIso8601String() ?? '',
+    'total_expected': d.totalExpected,
+    'total_count': d.totalCount,
+    'total_difference': d.totalDifference,
+    'lines': [
+      for (final i in stockItems)
+        if (d.counts.containsKey(i.code))
+          {
+            'code': i.code,
+            'item': i.name,
+            'group': i.group,
+            'expected': d.expected(i.code),
+            'counted': d.counts[i.code],
+            'difference': d.difference(i.code),
+            'remark': d.remarks[i.code] ?? '',
+            'working': d.entries[i.code] ?? '',
+          },
+    ],
+    'data': d.toJson(),
+  };
+
   /// Creates or replaces the server copy of [d]; returns its record id.
   Future<String> put(DailyStock d, {String? knownId}) async {
-    final body = jsonEncode({
-      'date': d.date,
-      'status': d.status.name,
-      'employee': d.employee,
-      'total_count': d.totalCount,
-      'data': d.toJson(),
-    });
+    final body = jsonEncode(record(d));
     Future<String> patch(String id) async =>
         (await _json(
               _http.patch(_u('$_days/$id'), headers: _jsonHeaders, body: body),
@@ -183,6 +206,11 @@ class StockSync extends ChangeNotifier {
   static const _urlKey = 'stock_server_url';
   static const _staffKey = 'stock_staff';
   static const _idPrefix = 'stock_rid_';
+  static const _formatKey = 'stock_sync_format';
+
+  /// Bumped when [StockServer.record] gains fields: every day is sent
+  /// again once so the server has them.
+  static const recordFormat = '2';
 
   SyncState state = SyncState.off;
   DateTime? lastSync;
@@ -285,7 +313,8 @@ class StockSync extends ChangeNotifier {
     notifyListeners();
     try {
       final server = _server;
-      final dates = pushAll
+      final resend = pushAll || _store.get(_formatKey) != recordFormat;
+      final dates = resend
           ? [for (final d in _book.all()) d.date]
           : _book.unsentDates;
       for (final date in dates) {
@@ -310,6 +339,7 @@ class StockSync extends ChangeNotifier {
         _staffKey,
         jsonEncode([for (final s in await server.staff()) s.toJson()]),
       );
+      await _store.put(_formatKey, recordFormat);
       state = SyncState.synced;
       lastSync = _clock();
       lastError = null;
