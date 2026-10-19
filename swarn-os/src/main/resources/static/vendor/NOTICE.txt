@@ -1,3 +1,0 @@
-qrcode-generator 1.4.4 (c) Kazuhiko Arase, MIT License. https://github.com/kazuhikoarase/qrcode-generator
-jsQR 1.4.0 (c) Cosmo Wolfe, Apache-2.0 (see jsQR.LICENSE.txt). https://github.com/cozmo/jsQR
-Inter and Playfair Display fonts: SIL Open Font License (fonts/OFL-*.txt).
