@@ -1,0 +1,42 @@
+name: Swarn-OS (Java)
+
+on:
+  push:
+    paths: ['swarn-os/**', '.github/workflows/swarn-os.yml']
+  pull_request:
+    paths: ['swarn-os/**', '.github/workflows/swarn-os.yml']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: swarn-os
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Tests with local (H2) shop databases
+        run: mvn -B test
+      - name: Tests with the demo shop on PostgreSQL (cloud mode)
+        run: mvn -B test -Dswarn.test.storage=CLOUD -Dtest=SwarnOsIntegrationTest
+      - name: Package
+        run: mvn -B -DskipTests package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swarn-os-jar
+          path: swarn-os/target/swarn-os.jar
+          retention-days: 30
