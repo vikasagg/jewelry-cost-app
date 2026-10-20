@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../app_state.dart';
 import '../../../stock/stock_book.dart';
 import '../../../stock/stock_models.dart';
+import '../../../stock/stock_sync.dart';
 import '../../../stock/stock_report.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
@@ -113,6 +114,76 @@ class _StockCountScreenState extends State<StockCountScreen> {
     }
   }
 
+  List<StaffMember> get _staff => AppScope.read(context).stockSync.staff;
+
+  /// Staff list from the shop PC.
+  Future<void> _pickStaff() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text(
+                'Who is counting?',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final s in _staff)
+              ListTile(
+                key: Key('staff_${s.name}'),
+                leading: const Icon(Icons.person_outline),
+                title: Text(s.name),
+                subtitle: Text('+91 ${s.phone}'),
+                selected: s.name == _employee.text.trim(),
+                onTap: () => Navigator.pop(context, s.name),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _employee.text = picked;
+    setState(() => _nameError = false);
+    await _signIn();
+  }
+
+  /// Who signed in with their PIN on this screen.
+  String? _signedIn;
+
+  /// The counter must enter their own PIN (or create it) before counting.
+  Future<bool> _signIn() async {
+    final name = _employee.text.trim();
+    if (name.isEmpty) return false;
+    if (_signedIn?.toLowerCase() == name.toLowerCase()) return true;
+    final pin = await showPinEntry(context, _book, name);
+    if (pin == null || !mounted) return false;
+    try {
+      final next = await _book.startCount(_day, name, pin);
+      if (!mounted) return false;
+      setState(() {
+        _day = next;
+        _signedIn = name;
+      });
+      return true;
+    } on StockException catch (e) {
+      _snack(e.message);
+      return false;
+    }
+  }
+
+  /// Name entered and PIN checked; otherwise asks for them.
+  Future<bool> _ready() async {
+    if (_employee.text.trim().isEmpty) {
+      setState(() => _nameError = true);
+      _staff.isNotEmpty ? _pickStaff() : _employeeFocus.requestFocus();
+      _snack('Enter your name first');
+      return false;
+    }
+    return _signIn();
+  }
+
   Future<void> _saveNote() async {
     if (_editable && _note.text.trim() != _day.note) {
       await _do(() => _book.setNote(_day, _note.text));
@@ -121,13 +192,8 @@ class _StockCountScreenState extends State<StockCountScreen> {
 
   Future<void> _enterCount(StockItem item) async {
     if (!_editable) return;
-    // The employee name is mandatory before counting.
-    if (_employee.text.trim().isEmpty) {
-      setState(() => _nameError = true);
-      _employeeFocus.requestFocus();
-      _snack('Enter your name first');
-      return;
-    }
+    // Name and the counter's own PIN are needed before counting.
+    if (!await _ready() || !mounted) return;
     final count = _day.count(item.code);
     final r = await showCountKeypad(
       context,
@@ -181,12 +247,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
   }
 
   Future<void> _submit() async {
-    if (_employee.text.trim().isEmpty) {
-      setState(() => _nameError = true);
-      _employeeFocus.requestFocus();
-      _snack('Enter your name first');
-      return;
-    }
+    if (!await _ready()) return;
     await _saveEmployee();
     await _saveNote();
     if (!mounted) return;
@@ -225,7 +286,9 @@ class _StockCountScreenState extends State<StockCountScreen> {
     title: 'Verify stock count',
     message:
         'Verified counts become tomorrow\'s expected opening stock. '
-        'Differences stay recorded.',
+        'Differences stay recorded. The approver must be someone other '
+        'than ${_day.employee.isEmpty ? 'the counter' : _day.employee}.',
+    counter: _day.employee,
     run: (m, p, _) async {
       final next = await _book.verify(_day, manager: m, pin: p);
       if (mounted) setState(() => _day = next);
@@ -247,6 +310,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
   Future<void> _adjust() => showAdjustmentDialog(
     context,
     _book,
+    counter: _day.employee,
     run: (code, qty, reason, m, p) async {
       final next = await _book.addAdjustment(
         _day,
@@ -405,10 +469,16 @@ class _StockCountScreenState extends State<StockCountScreen> {
                 controller: _employee,
                 focusNode: _employeeFocus,
                 enabled: _editable,
+                // With a staff list from the shop PC, pick a name.
+                readOnly: _staff.isNotEmpty,
+                onTap: _staff.isNotEmpty ? _pickStaff : null,
                 textCapitalization: TextCapitalization.words,
                 decoration: InputDecoration(
                   labelText: 'Employee name *',
                   prefixIcon: const Icon(Icons.person_outline),
+                  suffixIcon: _staff.isNotEmpty && _editable
+                      ? const Icon(Icons.arrow_drop_down)
+                      : null,
                   errorText: _nameError && _employee.text.trim().isEmpty
                       ? 'Name is required'
                       : null,

@@ -8,6 +8,64 @@ import 'package:intl/intl.dart';
 import '../data/key_value_store.dart';
 import 'stock_models.dart';
 
+/// Personal PINs for counting and approving stock.
+abstract class StaffPins {
+  bool hasPin(String name);
+
+  /// Creates [name]'s PIN, or changes it (then [currentPin] is needed).
+  Future<void> setPin(String name, String pin, {String? currentPin});
+
+  /// Throws [StockException] unless [pin] is [name]'s PIN.
+  Future<void> verify(String name, String pin);
+}
+
+/// PINs kept on this phone (salted SHA-256, never the PIN itself).
+class LocalStaffPins implements StaffPins {
+  LocalStaffPins(this._store);
+  final KeyValueStore _store;
+
+  static String _key(String name) =>
+      'stock_userpin_${name.trim().toLowerCase()}';
+
+  static String _hash(String pin, String salt) =>
+      sha256.convert(utf8.encode('$salt:$pin')).toString();
+
+  @override
+  bool hasPin(String name) => _store.get(_key(name)) != null;
+
+  bool matches(String name, String pin) {
+    final raw = _store.get(_key(name));
+    if (raw == null) return false;
+    final i = raw.indexOf(':');
+    return i > 0 && _hash(pin, raw.substring(0, i)) == raw.substring(i + 1);
+  }
+
+  /// Stores [pin] for [name] without asking for the old one (used after
+  /// the shop PC accepted it).
+  Future<void> remember(String name, String pin) async {
+    final rnd = Random.secure();
+    final salt = base64Url.encode(List.generate(16, (_) => rnd.nextInt(256)));
+    await _store.put(_key(name), '$salt:${_hash(pin, salt)}');
+  }
+
+  @override
+  Future<void> setPin(String name, String pin, {String? currentPin}) async {
+    if (name.trim().isEmpty) throw StockException('Enter the name first');
+    if (!StockBook.validPin(pin)) {
+      throw StockException('PIN must be 4–8 digits');
+    }
+    if (hasPin(name) && !matches(name, currentPin ?? '')) {
+      throw StockException('Current PIN is incorrect');
+    }
+    await remember(name, pin);
+  }
+
+  @override
+  Future<void> verify(String name, String pin) async {
+    if (!matches(name, pin)) throw StockException('Incorrect PIN');
+  }
+}
+
 /// Thrown when a stock action is not allowed (shown to the user).
 class StockException implements Exception {
   StockException(this.message);
@@ -17,7 +75,8 @@ class StockException implements Exception {
 }
 
 /// Daily stock counts, their approvals and audit trail, stored locally
-/// (works offline) under their own keys — separate from price history.
+/// (works offline) under their own keys — separate from price history —
+/// and shared with the shop PC's database by StockSync when one is set.
 ///
 /// Rules:
 /// * A day's expected opening is the previous *verified* day's physical
@@ -33,8 +92,6 @@ class StockBook extends ChangeNotifier {
   final DateTime Function() _clock;
 
   static const _dayPrefix = 'stock_day_';
-  static const _pinHashKey = 'stock_pin_hash';
-  static const _pinSaltKey = 'stock_pin_salt';
   static const _employeeKey = 'stock_last_employee';
 
   static final _dateFmt = DateFormat('yyyy-MM-dd');
@@ -72,7 +129,52 @@ class StockBook extends ChangeNotifier {
 
   Future<void> _save(DailyStock day) async {
     await _store.put('$_dayPrefix${day.date}', jsonEncode(day.toJson()));
+    await _markChanged(day.date);
     notifyListeners();
+  }
+
+  // ------------------------------------------------------------ server sync
+
+  static const _changedPrefix = 'stock_changed_';
+
+  /// Told when a day changes on this device, so it can be sent to the
+  /// shop PC (see StockSync).
+  void Function(String date)? onLocalChange;
+
+  Future<void> _markChanged(String date) async {
+    await _store.put(
+      '$_changedPrefix$date',
+      _clock().microsecondsSinceEpoch.toString(),
+    );
+    onLocalChange?.call(date);
+  }
+
+  /// Days changed here and not yet sent to the server.
+  List<String> get unsentDates => [
+    for (final k in _store.keys.where((k) => k.startsWith(_changedPrefix)))
+      k.substring(_changedPrefix.length),
+  ];
+
+  /// Marks of the local change [date] is at; pass it back to [markSent]
+  /// once that version reached the server.
+  String? changeMark(String date) => _store.get('$_changedPrefix$date');
+
+  /// Clears the "not sent" flag, unless the day changed again meanwhile.
+  Future<void> markSent(String date, String? mark) async {
+    if (mark != null && changeMark(date) == mark) {
+      await _store.delete('$_changedPrefix$date');
+    }
+  }
+
+  /// Stores a day received from the server, unless this device has
+  /// changes to it that are not sent yet (those win and go up next).
+  Future<bool> applyRemote(DailyStock day) async {
+    if (changeMark(day.date) != null) return false;
+    final raw = jsonEncode(day.toJson());
+    if (_store.get('$_dayPrefix${day.date}') == raw) return false;
+    await _store.put('$_dayPrefix${day.date}', raw);
+    notifyListeners();
+    return true;
   }
 
   /// The most recent earlier count (any status) — shown as "Last day".
@@ -226,19 +328,32 @@ class StockBook extends ChangeNotifier {
   Future<DateTime?> autosave(DailyStock d) async {
     if (d.status != StockStatus.draft) return null;
     final at = _clock();
-    await _store.put(
-      '$_dayPrefix${d.date}',
-      jsonEncode(d.copyWith(savedAt: at).toJson()),
-    );
+    final previous = _store.get('$_dayPrefix${d.date}');
+    final next = d.copyWith(savedAt: at).toJson();
+    await _store.put('$_dayPrefix${d.date}', jsonEncode(next));
     await _store.put(
       _sessionKey,
       jsonEncode({'date': d.date, 'savedAt': at.toIso8601String()}),
     );
+    if (previous == null || !_sameIgnoringSaveTime(previous, next)) {
+      await _markChanged(d.date);
+    }
     if (d.employee.trim().isNotEmpty) {
       await _store.put(_employeeKey, d.employee.trim());
     }
     notifyListeners();
     return at;
+  }
+
+  static bool _sameIgnoringSaveTime(String raw, Map<String, dynamic> next) {
+    try {
+      final a = Map<String, dynamic>.from(jsonDecode(raw) as Map)
+        ..remove('savedAt');
+      final b = Map<String, dynamic>.from(next)..remove('savedAt');
+      return jsonEncode(a) == jsonEncode(b);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// The last auto-saved count session: its date and save time.
@@ -325,37 +440,51 @@ class StockBook extends ChangeNotifier {
     return next;
   }
 
-  // ------------------------------------------------------------- manager
+  // ------------------------------------------------------------ PINs
 
-  bool get hasManagerPin => _store.get(_pinHashKey) != null;
-
-  String _hash(String pin, String salt) =>
-      sha256.convert(utf8.encode('$salt:$pin')).toString();
+  /// Personal PINs: on this phone, or on the shop PC when one is set
+  /// (StockSync swaps in its own).
+  late StaffPins pins = LocalStaffPins(_store);
 
   static bool validPin(String pin) => RegExp(r'^\d{4,8}$').hasMatch(pin);
 
-  /// Sets the manager PIN. Changing an existing PIN needs the current one.
-  Future<void> setManagerPin(String pin, {String? currentPin}) async {
-    if (!validPin(pin)) throw StockException('PIN must be 4–8 digits');
-    if (hasManagerPin && !checkPin(currentPin ?? '')) {
-      throw StockException('Current PIN is incorrect');
+  static String _norm(String name) => name.trim().toLowerCase();
+
+  /// Checks [name]'s own PIN (throws [StockException] if wrong).
+  Future<void> _authorise(String name, String pin) async {
+    if (name.trim().isEmpty) throw StockException('Select who is approving');
+    if (!pins.hasPin(name)) {
+      throw StockException(
+        '${name.trim()} has not created a PIN yet. '
+        'Use "My PIN" on the Stock screen first.',
+      );
     }
-    final rnd = Random.secure();
-    final salt = base64Url.encode(List.generate(16, (_) => rnd.nextInt(256)));
-    await _store.put(_pinSaltKey, salt);
-    await _store.put(_pinHashKey, _hash(pin, salt));
-    notifyListeners();
+    await pins.verify(name, pin);
   }
 
-  bool checkPin(String pin) {
-    final hash = _store.get(_pinHashKey), salt = _store.get(_pinSaltKey);
-    return hash != null && salt != null && _hash(pin, salt) == hash;
+  /// The person who counted may not approve their own count.
+  void _notCounter(DailyStock d, String approver) {
+    if (d.employee.trim().isNotEmpty && _norm(approver) == _norm(d.employee)) {
+      throw StockException(
+        '${d.employee.trim()} counted this stock and cannot approve it. '
+        'Another staff member must approve.',
+      );
+    }
   }
 
-  void _authorise(String manager, String pin) {
-    if (manager.trim().isEmpty) throw StockException('Enter the manager name');
-    if (!hasManagerPin) throw StockException('Set a manager PIN first');
-    if (!checkPin(pin)) throw StockException('Incorrect manager PIN');
+  /// The counter signs in with their own PIN before counting.
+  Future<DailyStock> startCount(DailyStock d, String name, String pin) async {
+    _requireDraft(d);
+    final n = name.trim();
+    if (n.isEmpty) throw StockException('Enter your name first');
+    if (!pins.hasPin(n)) {
+      throw StockException('$n has not created a PIN yet');
+    }
+    await pins.verify(n, pin);
+    var next = await setEmployee(d, n);
+    next = next.logged(_event(n, 'Signed in', 'PIN checked'));
+    await _save(next);
+    return next;
   }
 
   /// Adds a manager-approved adjustment to today's expected stock.
@@ -368,7 +497,8 @@ class StockBook extends ChangeNotifier {
     required String pin,
   }) async {
     _requireDraft(d);
-    _authorise(manager, pin);
+    _notCounter(d, manager);
+    await _authorise(manager, pin);
     if (qty == 0) throw StockException('Adjustment quantity cannot be 0');
     if (reason.trim().isEmpty) throw StockException('Enter a reason');
     final adj = StockAdjustment(
@@ -400,7 +530,8 @@ class StockBook extends ChangeNotifier {
     if (d.status != StockStatus.submitted) {
       throw StockException('Only a submitted count can be verified');
     }
-    _authorise(manager, pin);
+    _notCounter(d, manager);
+    await _authorise(manager, pin);
     final next = d
         .copyWith(
           status: StockStatus.verified,
@@ -428,7 +559,7 @@ class StockBook extends ChangeNotifier {
     required String reason,
   }) async {
     if (d.status != StockStatus.verified) return d;
-    _authorise(manager, pin);
+    await _authorise(manager, pin);
     if (reason.trim().isEmpty) throw StockException('Enter a reason');
     final later = all().where(
       (x) => x.date.compareTo(d.date) > 0 && x.status == StockStatus.verified,

@@ -26,12 +26,28 @@ jobs:
           flutter-version: 3.47.7
           cache: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - run: flutter pub get
       - run: flutter test
       - run: flutter build apk --release
 
+      # Web app for the shop PC: unzip into PocketBase's pb_public folder and
+      # open http://<PC address>:8090 on any phone (iPhone included).
+      - name: Build web app for the shop PC
+        run: |
+          flutter build web --release --no-web-resources-cdn --base-href "/"
+          ./tool/bundle_web_ocr.sh build/web
+          (cd build/web && zip -qr ../../damiyaas-web-for-shop-pc.zip .)
+
       - name: Rename APK
         run: cp build/app/outputs/flutter-apk/app-release.apk jewellery-cost-calculator.apk
+
+      # PocketBase setup (tables + staff) for the shop PC.
+      - name: Package server setup
+        run: (cd server && zip -qr ../server-setup.zip .)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -62,7 +78,10 @@ jobs:
           name: ${{ steps.rel.outputs.name }}
           prerelease: ${{ steps.rel.outputs.prerelease }}
           make_latest: ${{ steps.rel.outputs.prerelease == 'false' }}
-          files: jewellery-cost-calculator.apk
+          files: |
+            jewellery-cost-calculator.apk
+            damiyaas-web-for-shop-pc.zip
+            server-setup.zip
           body: |
             Damiyaas Jewelers — jewellery cost calculator for Android, built from `${{ github.ref_name }}` (${{ github.sha }}).
             On the phone: open this page, download **jewellery-cost-calculator.apk**, allow

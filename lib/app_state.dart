@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import 'billing/bill.dart';
@@ -11,16 +12,28 @@ import 'models/gold_rates.dart';
 import 'models/jewellery_input.dart';
 import 'pricing/pricing_engine.dart';
 import 'stock/stock_book.dart';
+import 'stock/stock_sync.dart';
 
 /// App-wide state: current gold rates, pricing defaults and history.
 class AppState extends ChangeNotifier {
-  AppState(KeyValueStore store, {DateTime Function()? clock})
-    : _rates = RatesRepository(store),
-      _defaults = PricingDefaultsRepository(store),
-      history = HistoryRepository(store),
-      stock = StockBook(store, clock: clock),
-      _clock = clock ?? DateTime.now {
+  AppState(
+    KeyValueStore store, {
+    DateTime Function()? clock,
+    http.Client? httpClient,
+    String? defaultServerUrl,
+  }) : _rates = RatesRepository(store),
+       _defaults = PricingDefaultsRepository(store),
+       history = HistoryRepository(store),
+       stock = StockBook(store, clock: clock),
+       _clock = clock ?? DateTime.now {
     _current = _rates.load();
+    stockSync = StockSync(
+      store,
+      stock,
+      client: httpClient,
+      clock: clock,
+      defaultUrl: defaultServerUrl,
+    );
   }
 
   final RatesRepository _rates;
@@ -29,6 +42,9 @@ class AppState extends ChangeNotifier {
 
   /// Daily physical stock counts — separate from pricing and its history.
   final StockBook stock;
+
+  /// Shares [stock] with the database on the shop PC.
+  late final StockSync stockSync;
   final DateTime Function() _clock;
   final engine = const PricingEngine();
 
