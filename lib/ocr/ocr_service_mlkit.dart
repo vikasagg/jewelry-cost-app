@@ -30,19 +30,7 @@ class MlKitOcrService implements OcrService {
     if (!(Platform.isAndroid || Platform.isIOS)) {
       throw OcrException('Camera OCR is available on Android, iOS and web.');
     }
-    final pixels = await compute(_toRgba, imageBytes);
-    final RecognizedText result;
-    try {
-      result = await _recognizer.processImage(
-        InputImage.fromBitmap(
-          bitmap: pixels.rgba,
-          width: pixels.width,
-          height: pixels.height,
-        ),
-      );
-    } catch (e) {
-      throw OcrException('ML Kit could not read the image: $e');
-    }
+    final (result, _) = await _process(imageBytes);
     // Rebuild text in reading order: lines top-to-bottom, left-to-right.
     final lines = <TextLine>[for (final b in result.blocks) ...b.lines]
       ..sort((a, b) {
@@ -51,6 +39,46 @@ class MlKitOcrService implements OcrService {
         return (a.boundingBox.left - b.boundingBox.left).sign.toInt();
       });
     return _mergeRows(lines);
+  }
+
+  Future<(RecognizedText, _Rgba)> _process(Uint8List imageBytes) async {
+    if (!(Platform.isAndroid || Platform.isIOS)) {
+      throw OcrException('Camera OCR is available on Android, iOS and web.');
+    }
+    final pixels = await compute(_toRgba, imageBytes);
+    try {
+      final result = await _recognizer.processImage(
+        InputImage.fromBitmap(
+          bitmap: pixels.rgba,
+          width: pixels.width,
+          height: pixels.height,
+        ),
+      );
+      return (result, pixels);
+    } catch (e) {
+      throw OcrException('ML Kit could not read the image: $e');
+    }
+  }
+
+  @override
+  Future<OcrPage> recognizeLayout(Uint8List imageBytes) async {
+    final (result, pixels) = await _process(imageBytes);
+    return OcrPage(
+      width: pixels.width.toDouble(),
+      height: pixels.height.toDouble(),
+      boxes: [
+        for (final b in result.blocks)
+          for (final l in b.lines)
+            OcrBox(
+              l.text,
+              left: l.boundingBox.left,
+              top: l.boundingBox.top,
+              right: l.boundingBox.right,
+              bottom: l.boundingBox.bottom,
+              confidence: l.confidence ?? 1,
+            ),
+      ],
+    );
   }
 
   /// Joins lines that sit on the same visual row (e.g. "GW" … "10.250 g").

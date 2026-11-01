@@ -24,6 +24,7 @@ class MainActivity : FlutterActivity() {
                     call.argument<String>("name")!!,
                     call.argument<String>("phone")!!,
                     call.argument<String>("text"),
+                    call.argument<String>("mime") ?: "application/pdf",
                     result,
                 )
             }
@@ -40,6 +41,7 @@ class MainActivity : FlutterActivity() {
         name: String,
         phone: String,
         text: String?,
+        mime: String,
         result: MethodChannel.Result,
     ) {
         val dir = File(cacheDir, "bills").apply { mkdirs() }
@@ -49,11 +51,12 @@ class MainActivity : FlutterActivity() {
         pending = null
         for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
             val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/pdf"
+                type = mime
                 setPackage(pkg)
                 putExtra(Intent.EXTRA_STREAM, uri)
                 if (text != null) putExtra(Intent.EXTRA_TEXT, text)
-                putExtra("jid", "$phone@s.whatsapp.net")
+                // No number: WhatsApp asks which chat to send to.
+                if (phone.isNotEmpty()) putExtra("jid", "$phone@s.whatsapp.net")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             try {

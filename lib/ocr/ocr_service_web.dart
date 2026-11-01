@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:typed_data';
 
@@ -10,6 +11,9 @@ OcrService createOcrService() => PaddleOcrService();
 /// Defined in web/index.html; runs PaddleOCR (see tool/web_ocr/entry.js).
 @JS('jcRecognize')
 external JSPromise<JSString> _recognize(JSString imageUrl);
+
+@JS('jcRecognizeBoxes')
+external JSPromise<JSString> _recognizeBoxes(JSString imageUrl);
 
 /// In-browser OCR with PaddleOCR on ONNX Runtime Web. Finds text regions
 /// first, so photo backgrounds are ignored, and corrects sideways or
@@ -38,6 +42,23 @@ class PaddleOcrService implements OcrService {
         'The text reader could not run ($e). Check the internet connection '
         'for the first scan, or enter details manually.',
       );
+    } finally {
+      web.URL.revokeObjectURL(url);
+    }
+  }
+
+  @override
+  Future<OcrPage> recognizeLayout(Uint8List imageBytes) async {
+    final blob = web.Blob(
+      [imageBytes.toJS].toJS,
+      web.BlobPropertyBag(type: 'image/jpeg'),
+    );
+    final url = web.URL.createObjectURL(blob);
+    try {
+      final json = (await _recognizeBoxes(url.toJS).toDart).toDart;
+      return OcrPage.fromJson(jsonDecode(json) as Map<String, dynamic>);
+    } catch (e) {
+      throw OcrException('The text reader could not run ($e).');
     } finally {
       web.URL.revokeObjectURL(url);
     }

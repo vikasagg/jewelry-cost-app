@@ -11,6 +11,7 @@ import 'models/calculation_record.dart';
 import 'models/gold_rates.dart';
 import 'models/jewellery_input.dart';
 import 'pricing/pricing_engine.dart';
+import 'reports/sales_register.dart';
 import 'stock/stock_book.dart';
 import 'stock/stock_sync.dart';
 
@@ -25,6 +26,7 @@ class AppState extends ChangeNotifier {
        _defaults = PricingDefaultsRepository(store),
        history = HistoryRepository(store),
        stock = StockBook(store, clock: clock),
+       sales = SalesRegisterBook(store, clock: clock),
        _clock = clock ?? DateTime.now {
     _current = _rates.load();
     stockSync = StockSync(
@@ -42,6 +44,9 @@ class AppState extends ChangeNotifier {
 
   /// Daily physical stock counts — separate from pricing and its history.
   final StockBook stock;
+
+  /// Today's Sales: the customer register, day by day.
+  final SalesRegisterBook sales;
 
   /// Shares [stock] with the database on the shop PC.
   late final StockSync stockSync;
