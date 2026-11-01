@@ -9,6 +9,7 @@ import '../../stock/stock_models.dart';
 import '../theme.dart';
 import 'dashboard_screen.dart';
 import 'rate_setup_screen.dart';
+import 'reports/reports_screen.dart';
 import 'stock/stock_home_screen.dart';
 
 /// "Royal Night" palette for the home screen only.
@@ -96,6 +97,15 @@ class HomeScreen extends StatelessWidget {
                                 subtitle: _stockStatus(book.byDate(book.today)),
                                 onTap: () => open(const StockHomeScreen()),
                               ),
+                            ),
+                            const SizedBox(height: 14),
+                            _ModeCard(
+                              key: const Key('openReports'),
+                              filled: false,
+                              icon: Icons.assessment_outlined,
+                              title: 'Reports',
+                              subtitle: "Today's sales from the register",
+                              onTap: () => open(const ReportsScreen()),
                             ),
                             const SizedBox(height: 16),
                             const Text(

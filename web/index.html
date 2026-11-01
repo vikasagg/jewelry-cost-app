@@ -52,6 +52,10 @@
       if (!(await window.jcOcrReady)) throw new Error('OCR engine not loaded');
       return window.jcOcr.recognize(imageUrl);
     };
+    window.jcRecognizeBoxes = async function (imageUrl) {
+      if (!(await window.jcOcrReady)) throw new Error('OCR engine not loaded');
+      return window.jcOcr.recognizeBoxes(imageUrl, 1600);
+    };
   </script>
   <link rel="manifest" href="manifest.json">
 </head>

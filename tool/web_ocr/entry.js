@@ -1,7 +1,8 @@
 // In-browser OCR for the web build: PaddleOCR (PP-OCRv4 mobile) on ONNX
 // Runtime Web. Bundled by ../bundle_web_ocr.sh into build/web/ocr/.
 //
-// Exposes window.jcOcr = { warmUp(), recognize(imageUrl) → text }.
+// Exposes window.jcOcr = { warmUp(), recognize(imageUrl) → text,
+//   recognizeBoxes(imageUrl, maxSide) → JSON of lines with their boxes }.
 // Text is detected first (so background texture such as wood grain is
 // ignored), then each line is read. Sideways or upside-down tags are
 // handled here: a few sample lines are read both ways up and the whole
@@ -14,7 +15,7 @@ const base = new URL('.', import.meta.url).href; // …/ocr/
 ort.env.wasm.wasmPaths = base;
 ort.env.wasm.numThreads = 1; // GitHub Pages is not cross-origin isolated
 
-const MAX_SIDE = 1024; // longest side used for detection: speed vs small text
+const MAX_SIDE = 1024; // tags: longest side used for detection (speed vs small text)
 let engine;
 
 function load() {
@@ -43,11 +44,12 @@ async function loadImage(url) {
   return img;
 }
 
-/** Draws [img] scaled to MAX_SIDE. */
-function draw(img, deg = 0) {
+/** Draws [img] scaled to [maxSide]. */
+function draw(img, deg = 0, maxSide = MAX_SIDE, enlarge = false) {
   const W = img.naturalWidth || img.width;
   const H = img.naturalHeight || img.height;
-  const s = Math.min(1, MAX_SIDE / Math.max(W, H));
+  // Small photos of handwriting read better enlarged.
+  const s = enlarge ? maxSide / Math.max(W, H) : Math.min(1, maxSide / Math.max(W, H));
   const w = Math.round(W * s), h = Math.round(H * s);
   const cv = document.createElement('canvas');
   cv.width = deg % 180 ? h : w;
@@ -83,12 +85,14 @@ async function flipped(lineImages) {
   }));
 }
 
-async function recognize(url) {
+/** Reads every line ({text, mean, box}, boxes in the upright frame); with
+ * [separate], every detected text box is read on its own. */
+async function read(url, maxSide = MAX_SIDE, separate = false) {
   const { detection, recognition } = await load();
   const img = await loadImage(url);
-  const det = await detection.run(draw(img, 0));
+  const det = await detection.run(draw(img, 0, maxSide, separate));
   const { lineImages } = det;
-  if (!lineImages.length) return '';
+  if (!lineImages.length) return { lines: [], width: 0, height: 0 };
 
   // Orientation: are the text boxes mostly tall (tag photographed
   // sideways)? Then read the biggest lines as cropped and upside down.
@@ -121,8 +125,42 @@ async function recognize(url) {
     box: l.box.map(turn),
   }));
 
-  const lines = await recognition.run(ready);
+  const width = deg % 180 ? H : W, height = deg % 180 ? W : H;
+  if (!separate) {
+    // Pieces on the same row are joined into one line (tags).
+    const lines = await recognition.run(ready);
+    return { lines, width, height };
+  }
+  // Each text box on its own, so columns stay apart (registers).
+  const lines = [];
+  for (const l of ready) {
+    const [r] = await recognition.run([l]);
+    if (r && r.text.trim()) lines.push({ text: r.text, mean: r.mean, box: l.box });
+  }
+  return { lines, width, height };
+}
+
+async function recognize(url) {
+  const { lines } = await read(url);
   return lines.map((l) => l.text).join('\n');
 }
 
-window.jcOcr = { warmUp: () => load().then(() => true), recognize };
+/** Lines with their position, for pages laid out in columns (registers). */
+async function recognizeBoxes(url, maxSide = 1600) {
+  const { lines, width, height } = await read(url, maxSide, true);
+  return JSON.stringify({
+    width,
+    height,
+    lines: lines.map((l) => {
+      const xs = l.box.map((p) => p[0]), ys = l.box.map((p) => p[1]);
+      return {
+        text: l.text,
+        conf: l.mean,
+        left: Math.min(...xs), top: Math.min(...ys),
+        right: Math.max(...xs), bottom: Math.max(...ys),
+      };
+    }),
+  });
+}
+
+window.jcOcr = { warmUp: () => load().then(() => true), recognize, recognizeBoxes };
