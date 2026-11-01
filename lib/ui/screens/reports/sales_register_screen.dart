@@ -101,10 +101,13 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
       if (rows.isEmpty) {
         _snack('No register lines found. Try a closer, brighter photo.');
       } else {
-        await _save(_reg.copyWith(entries: [..._reg.entries, ...rows]));
+        final part = _reg.nextPart;
+        final m = _reg.mergePart(rows);
+        await _save(m.register);
         _snack(
-          'Read ${rows.length} line${rows.length == 1 ? '' : 's'} — please '
-          'check each one (handwriting is not always read correctly).',
+          'Part $part: ${m.added} line${m.added == 1 ? '' : 's'} added'
+          '${m.skipped == 0 ? '' : ', ${m.skipped} already listed skipped'}'
+          ' — please check each one.',
         );
       }
     } catch (e) {
@@ -112,6 +115,36 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
     } finally {
       if (mounted) setState(() => _busy = null);
     }
+  }
+
+  Future<void> _partAction(int part, String action) async {
+    if (action == 'first') {
+      await _save(_reg.movePartFirst(part));
+      _snack('Part $part moved to the top; lines renumbered.');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Remove part $part?'),
+        content: Text(
+          'Its ${_reg.parts[part]} line(s) are removed and the rest are '
+          'renumbered.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('removePartOk'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _save(_reg.removePart(part));
   }
 
   Future<void> _edit(int? index) async {
@@ -246,6 +279,43 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
                   ),
                 ),
               ),
+              if (r.parts.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text(
+                      'Photos merged:',
+                      style: TextStyle(color: AppColors.muted),
+                    ),
+                    for (final p in r.parts.entries)
+                      PopupMenuButton<String>(
+                        key: Key('registerPart_${p.key}'),
+                        tooltip: 'Part ${p.key}',
+                        onSelected: (a) => _partAction(p.key, a),
+                        itemBuilder: (_) => [
+                          if (r.parts.length > 1)
+                            const PopupMenuItem(
+                              value: 'first',
+                              child: Text('Move to top (renumber)'),
+                            ),
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: Text('Remove this part'),
+                          ),
+                        ],
+                        child: Chip(
+                          avatar: const Icon(Icons.photo_outlined, size: 18),
+                          label: Text(
+                            'Part ${p.key} · ${p.value} line${p.value == 1 ? '' : 's'}',
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 14),
               Row(
                 children: [

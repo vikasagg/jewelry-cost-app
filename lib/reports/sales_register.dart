@@ -16,6 +16,7 @@ class SalesEntry {
     this.mobile = '',
     this.item = '',
     this.checked = true,
+    this.part = 0,
   });
 
   final int no;
@@ -29,6 +30,9 @@ class SalesEntry {
   /// False for rows read from a photo that nobody has looked at yet.
   final bool checked;
 
+  /// Which photo (1, 2, …) the line was read from; 0 = typed by hand.
+  final int part;
+
   /// "4 / R", or just "4".
   String get numberLabel => type.isEmpty ? '$no' : '$no / $type';
 
@@ -39,6 +43,7 @@ class SalesEntry {
     String? mobile,
     String? item,
     bool? checked,
+    int? part,
   }) => SalesEntry(
     no: no ?? this.no,
     type: type ?? this.type,
@@ -46,6 +51,7 @@ class SalesEntry {
     mobile: mobile ?? this.mobile,
     item: item ?? this.item,
     checked: checked ?? this.checked,
+    part: part ?? this.part,
   );
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +61,7 @@ class SalesEntry {
     'mobile': mobile,
     'item': item,
     'checked': checked,
+    'part': part,
   };
 
   factory SalesEntry.fromJson(Map<String, dynamic> j) => SalesEntry(
@@ -64,6 +71,7 @@ class SalesEntry {
     mobile: j['mobile'] as String? ?? '',
     item: j['item'] as String? ?? '',
     checked: j['checked'] as bool? ?? true,
+    part: j['part'] as int? ?? 0,
   );
 }
 
@@ -78,6 +86,69 @@ class SalesRegister {
   int get nextNumber => entries.fold(0, (m, e) => max(m, e.no)) + 1;
 
   int get unchecked => entries.where((e) => !e.checked).length;
+
+  /// Photo parts merged into this register: part number → lines from it.
+  Map<int, int> get parts {
+    final out = <int, int>{};
+    for (final e in entries.where((e) => e.part > 0)) {
+      out[e.part] = (out[e.part] ?? 0) + 1;
+    }
+    return Map.fromEntries(
+      out.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+    );
+  }
+
+  int get nextPart => parts.keys.fold(0, max) + 1;
+
+  /// Numbers the lines 1, 2, 3… in their current order.
+  SalesRegister renumbered() => copyWith(
+    entries: [
+      for (var i = 0; i < entries.length; i++) entries[i].copyWith(no: i + 1),
+    ],
+  );
+
+  /// Adds the lines read from one more photo of the register. Lines that
+  /// are already listed (the overlap between two photos of a page) are
+  /// left out; the rest continue the numbering.
+  ({SalesRegister register, int added, int skipped}) mergePart(
+    List<SalesEntry> scanned,
+  ) {
+    final part = nextPart;
+    final kept = <SalesEntry>[];
+    var skipped = 0;
+    for (final s in scanned) {
+      if ([...entries, ...kept].any((e) => isSameLine(e, s))) {
+        skipped++;
+      } else {
+        kept.add(s);
+      }
+    }
+    var no = nextNumber;
+    return (
+      register: copyWith(
+        entries: [
+          ...entries,
+          for (final k in kept) k.copyWith(no: no++, part: part),
+        ],
+      ),
+      added: kept.length,
+      skipped: skipped,
+    );
+  }
+
+  /// Removes the lines read from photo [part] and renumbers.
+  SalesRegister removePart(int part) => copyWith(
+    entries: entries.where((e) => e.part != part).toList(),
+  ).renumbered();
+
+  /// Puts the lines of photo [part] first (it was the top of the page)
+  /// and renumbers.
+  SalesRegister movePartFirst(int part) => copyWith(
+    entries: [
+      ...entries.where((e) => e.part == part),
+      ...entries.where((e) => e.part != part),
+    ],
+  ).renumbered();
 
   String get dateLabel =>
       DateFormat('d MMM yyyy').format(DateFormat('yyyy-MM-dd').parse(date));
@@ -145,6 +216,20 @@ class SalesRegisterBook extends ChangeNotifier {
     }
     return (names: names.toList(), items: items.toList());
   }
+}
+
+/// True when two lines are the same register line read twice (for
+/// example in the overlap of two photos of one page).
+bool isSameLine(SalesEntry a, SalesEntry b) {
+  final nameA = a.name.trim(), nameB = b.name.trim();
+  final itemA = a.item.trim(), itemB = b.item.trim();
+  if (a.mobile.isNotEmpty && a.mobile == b.mobile) return true;
+  if (nameA.isEmpty && nameB.isEmpty) {
+    return itemA.isNotEmpty && similarity(itemA, itemB) >= 0.9;
+  }
+  final names = similarity(nameA, nameB);
+  if (itemA.isEmpty || itemB.isEmpty) return names >= 0.9;
+  return names >= 0.7 && similarity(itemA, itemB) >= 0.7;
 }
 
 /// Items the shop writes in the register (spelling used in reports).

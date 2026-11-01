@@ -50,7 +50,13 @@ void main() {
     await t.tap(find.byKey(const Key('registerGallery')));
     await t.pumpAndSettle();
     expect(find.text('Register lines (10)'), findsOneWidget);
+    expect(find.text('Part 1 · 10 lines'), findsOneWidget);
     expect(find.byKey(const Key('registerUnchecked')), findsOneWidget);
+    // The same photo again: nothing new.
+    await t.tap(find.byKey(const Key('registerGallery')));
+    await t.pumpAndSettle();
+    expect(find.text('Register lines (10)'), findsOneWidget);
+    expect(find.textContaining('10 already listed skipped'), findsOneWidget);
     expect(find.text('Pintu Ji'), findsOneWidget);
 
     // Check line 1, and fix line 3 (Amar G, G-Chain sale).
@@ -152,6 +158,53 @@ void main() {
     expect(rows[8].item, 'G-Coin sale');
     expect(rows[9].type, 'N');
     expect(rows[9].item, 'Silver coin sale');
+  });
+
+  test('a page in two overlapping photos merges without repeats', () {
+    final page = OcrPage.fromJson(
+      jsonDecode(
+            File('test/fixtures/register_page_ocr.json').readAsStringSync(),
+          )
+          as Map<String, dynamic>,
+    );
+    // Top photo: lines down to Deepanshu; bottom photo: from the struck
+    // line down (three lines overlap).
+    OcrPage part(bool Function(OcrBox) keep) => OcrPage(
+      width: page.width,
+      height: page.height,
+      boxes: page.boxes.where(keep).toList(),
+    );
+    final top = parseRegisterPage(part((b) => b.centerY < 720));
+    final bottom = parseRegisterPage(part((b) => b.centerY > 590));
+    expect(top.length + bottom.length, greaterThan(10));
+
+    var r = const SalesRegister(date: '2026-11-01');
+    final m1 = r.mergePart(top);
+    r = m1.register;
+    final m2 = r.mergePart(bottom);
+    r = m2.register;
+    expect(m2.skipped, greaterThan(0));
+    expect(r.entries.length, 10);
+    expect(r.entries.map((e) => e.no), List.generate(10, (i) => i + 1));
+    expect(r.parts, {1: m1.added, 2: m2.added});
+    expect(r.entries.last.item, 'Silver coin sale');
+
+    // Bottom photo taken first: move part 2 up, numbers follow.
+    var x = const SalesRegister(date: '2026-11-01');
+    x = x.mergePart(bottom).register;
+    x = x.mergePart(top).register;
+    expect(x.entries.length, 10);
+    x = x.movePartFirst(2);
+    expect(x.entries.first.name, 'Pintu Ji');
+    expect(x.entries.map((e) => e.no), List.generate(10, (i) => i + 1));
+    x = x.removePart(1);
+    expect(x.parts.keys, [2]);
+    expect(x.entries.first.no, 1);
+
+    // The same photo twice adds nothing.
+    final again = r.mergePart(parseRegisterPage(page));
+    expect(again.added, 0);
+    expect(again.skipped, 10);
   });
 
   test('markers, mobile numbers and one-sided rows', () {
