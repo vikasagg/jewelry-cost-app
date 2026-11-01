@@ -71,11 +71,20 @@ void main() {
     await t.enterText(find.byKey(const Key('entryItem')), 'G-Chain sale');
     await t.tap(find.byKey(const Key('entryOk')));
     await t.pumpAndSettle();
-    // Delete the crossed-out line (6th).
-    await t.tap(find.byKey(const Key('registerRow_5')));
+    // Delete the crossed-out line (6th) with its row's delete button;
+    // Undo brings it back, then delete it for good.
+    await t.tap(find.byKey(const Key('registerDelete_5')));
     await t.pumpAndSettle();
-    await t.tap(find.byKey(const Key('entryDelete')));
+    expect(state.sales.byDate('2026-11-01').entries.length, 9);
+    await t.tap(find.text('Undo'));
     await t.pumpAndSettle();
+    expect(state.sales.byDate('2026-11-01').entries.length, 10);
+    await t.tap(find.byKey(const Key('registerDelete_5')));
+    await t.pumpAndSettle();
+    expect(
+      state.sales.byDate('2026-11-01').entries.map((e) => e.no),
+      List.generate(9, (i) => i + 1), // renumbered
+    );
 
     final saved = state.sales.byDate('2026-11-01');
     expect(saved.entries.length, 9);
@@ -92,6 +101,31 @@ void main() {
     await t.pumpAndSettle();
     expect(find.byKey(const Key('registerImage')), findsOneWidget);
     expect(find.byKey(const Key('shareRegisterImage')), findsOneWidget);
+
+    // WhatsApp (Android app): the PNG goes straight to WhatsApp.
+    final sent = <Map<Object?, Object?>>[];
+    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('damiyaas/whatsapp'),
+      (c) async {
+        sent.add(c.arguments as Map<Object?, Object?>);
+        return 'done';
+      },
+    );
+    await t.tap(find.byKey(const Key('whatsappRegisterImage')));
+    await t.pump();
+    expect(sent.single['mime'], 'image/png');
+    expect(sent.single['phone'], '');
+    expect(sent.single['name'], 'customer-register-2026-11-01.png');
+
+    // Back on the list: clear all lines.
+    await t.pageBack();
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('registerClearAll')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('clearAllOk')));
+    await t.pumpAndSettle();
+    expect(state.sales.byDate('2026-11-01').entries, isEmpty);
+    expect(find.text('Register lines (0)'), findsOneWidget);
   });
 
   testWidgets('register image is a PNG table', (t) async {

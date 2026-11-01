@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -147,6 +148,51 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
     if (ok == true) await _save(_reg.removePart(part));
   }
 
+  /// Deletes one line (with Undo) and renumbers the rest.
+  Future<void> _delete(int index) async {
+    final before = _reg;
+    final gone = _reg.entries[index];
+    await _save(
+      _reg.copyWith(entries: [..._reg.entries]..removeAt(index)).renumbered(),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Deleted ${gone.name.isEmpty ? 'line ${gone.no}' : gone.name}',
+          ),
+          action: SnackBarAction(label: 'Undo', onPressed: () => _save(before)),
+        ),
+      );
+  }
+
+  Future<void> _clearAll() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear all lines?'),
+        content: Text(
+          'All ${_reg.entries.length} lines of ${_reg.dateLabel} are removed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('clearAllOk'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear all'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _save(_reg.copyWith(entries: const []));
+  }
+
   Future<void> _edit(int? index) async {
     final e = index == null
         ? SalesEntry(no: _reg.nextNumber)
@@ -201,6 +247,8 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
       );
       if (go != true || !mounted) return;
     }
+    // A "Deleted … Undo" message would cover the report's buttons.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => RegisterImageScreen(register: _reg)),
     );
@@ -244,8 +292,9 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
                             ? 'Hold the phone straight over the page, in good '
                                   'light. The lines are read and listed below '
                                   'for you to check.'
-                            : 'Next page: its lines are added from '
-                                  'No. ${r.nextNumber}.',
+                            : 'Page in two parts? Photograph the next '
+                                  'part: lines already listed are skipped, '
+                                  'the rest continue from No. ${r.nextNumber}.',
                         style: const TextStyle(color: AppColors.muted),
                       ),
                       const SizedBox(height: 10),
@@ -322,6 +371,16 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
                   Expanded(
                     child: SectionTitle('Register lines (${r.entries.length})'),
                   ),
+                  if (r.entries.isNotEmpty)
+                    TextButton.icon(
+                      key: const Key('registerClearAll'),
+                      onPressed: _clearAll,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.error,
+                      ),
+                      icon: const Icon(Icons.delete_sweep_outlined),
+                      label: const Text('Clear all'),
+                    ),
                   TextButton.icon(
                     key: const Key('registerAddRow'),
                     onPressed: () => _edit(null),
@@ -357,8 +416,10 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
               for (var i = 0; i < r.entries.length; i++)
                 _EntryTile(
                   key: Key('registerRow_$i'),
+                  index: i,
                   entry: r.entries[i],
                   onTap: () => _edit(i),
+                  onDelete: () => _delete(i),
                 ),
               const SizedBox(height: 16),
               FilledButton.icon(
@@ -376,9 +437,17 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
 }
 
 class _EntryTile extends StatelessWidget {
-  const _EntryTile({super.key, required this.entry, required this.onTap});
+  const _EntryTile({
+    super.key,
+    required this.index,
+    required this.entry,
+    required this.onTap,
+    required this.onDelete,
+  });
+  final int index;
   final SalesEntry entry;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -393,12 +462,29 @@ class _EntryTile extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
-        leading: CircleAvatar(
-          backgroundColor: e.checked ? AppColors.goldSoft : AppColors.warnSoft,
-          child: Text(
-            e.numberLabel,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
+        contentPadding: const EdgeInsets.only(left: 2, right: 12),
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              key: Key('registerDelete_$index'),
+              tooltip: 'Delete this line',
+              icon: const Icon(Icons.delete_outline, color: AppColors.error),
+              onPressed: onDelete,
+            ),
+            CircleAvatar(
+              backgroundColor: e.checked
+                  ? AppColors.goldSoft
+                  : AppColors.warnSoft,
+              child: Text(
+                e.numberLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
         ),
         title: Text(
           e.name.isEmpty ? '— name —' : e.name,
@@ -564,12 +650,35 @@ class _RegisterImageScreenState extends State<RegisterImageScreen> {
 
   String get _fileName => 'customer-register-${widget.register.date}.png';
 
+  String get _caption => 'Customer register — ${widget.register.dateLabel}';
+
+  /// Android app: WhatsApp opens with the image attached and asks which
+  /// chat to send it to. iPhone and browsers: the share sheet.
+  Future<void> _whatsApp(Uint8List png) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final r = await const MethodChannel('damiyaas/whatsapp')
+            .invokeMethod<String>('sendFile', {
+              'bytes': png,
+              'name': _fileName,
+              'phone': '',
+              'text': _caption,
+              'mime': 'image/png',
+            });
+        if (r != 'notInstalled') return;
+      } catch (_) {
+        // Fall back to the share sheet.
+      }
+    }
+    await _share(png);
+  }
+
   Future<void> _share(Uint8List png) async {
     try {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile.fromData(png, mimeType: 'image/png', name: _fileName)],
-          text: 'Customer register — ${widget.register.dateLabel}',
+          text: _caption,
         ),
       );
     } catch (e) {
@@ -612,18 +721,32 @@ class _RegisterImageScreenState extends State<RegisterImageScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    key: const Key('shareRegisterImage'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: Colors.white,
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: FilledButton.icon(
+                        key: const Key('whatsappRegisterImage'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF25D366),
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () => _whatsApp(png),
+                        icon: const Icon(Icons.send),
+                        label: const Text('WhatsApp'),
+                      ),
                     ),
-                    onPressed: () => _share(png),
-                    icon: const Icon(Icons.share),
-                    label: const Text('Share (WhatsApp…)'),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton.icon(
+                        key: const Key('shareRegisterImage'),
+                        onPressed: () => _share(png),
+                        icon: const Icon(Icons.share),
+                        label: const Text('Share…'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
