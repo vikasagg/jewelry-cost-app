@@ -14,8 +14,15 @@ Future<Uint8List> renderRegisterPng(
   double width = 1600,
 }) async {
   const margin = 30.0, rowH = 50.0, pad = 12.0;
-  const columns = ['No. / R-N', 'Name', 'Mobile', 'Item'];
-  const fractions = [0.13, 0.28, 0.24, 0.35];
+  const columns = [
+    'No. / R-N',
+    'Name',
+    'Mobile',
+    'Metal',
+    'Item',
+    'Sale / Exch.',
+  ];
+  const fractions = [0.11, 0.25, 0.17, 0.12, 0.20, 0.15];
   const ink = Color(0xFF1F1F1F);
   const line = Color(0xFF2B2B2B);
 
@@ -23,7 +30,7 @@ Future<Uint8List> renderRegisterPng(
   final colW = [for (final f in fractions) tableW * f];
   final rows = r.entries.isEmpty ? [const SalesEntry(no: 0)] : r.entries;
   const titleH = 118.0;
-  final height = titleH + rowH * (rows.length + 1) + margin + 24;
+  final height = titleH + rowH * (rows.length + 1) + margin + 70;
 
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
@@ -90,11 +97,15 @@ Future<Uint8List> renderRegisterPng(
     for (var c = 0; c < columns.length; c++) {
       final cell = i == 0
           ? columns[c]
+          : r.entries.isEmpty
+          ? ''
           : switch (c) {
-              0 => rows[i - 1].no == 0 ? '' : rows[i - 1].numberLabel,
+              0 => rows[i - 1].numberLabel,
               1 => rows[i - 1].name,
               2 => rows[i - 1].mobile.isEmpty ? '—' : rows[i - 1].mobile,
-              _ => rows[i - 1].item,
+              3 => rows[i - 1].metal.label,
+              4 => rows[i - 1].item.isEmpty ? '—' : rows[i - 1].item,
+              _ => rows[i - 1].deal.label,
             };
       text(
         cell,
@@ -125,6 +136,21 @@ Future<Uint8List> renderRegisterPng(
       border..strokeWidth = 2,
     );
   }
+
+  // Totals: sales/exchanges, by metal, new/repeat customers.
+  int count(bool Function(SalesEntry) f) => r.entries.where(f).length;
+  final totals = [
+    for (final d in Deal.values) '${d.label} ${count((e) => e.deal == d)}',
+    for (final m in Metal.values) '${m.label} ${count((e) => e.metal == m)}',
+    for (final t in CustomerType.values)
+      '${t.label} ${count((e) => e.type == t)}',
+  ].join('   ·   ');
+  text(
+    'Total ${r.entries.length}   ·   $totals',
+    Offset(margin, top + tableH + 40),
+    size: 21,
+    color: const Color(0xFF6B5B45),
+  );
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(width.round(), height.round());

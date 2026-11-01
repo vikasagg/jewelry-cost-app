@@ -68,7 +68,10 @@ void main() {
     await t.tap(find.byKey(const Key('registerRow_2')));
     await t.pumpAndSettle();
     await t.enterText(find.byKey(const Key('entryName')), 'Amar G');
-    await t.enterText(find.byKey(const Key('entryItem')), 'G-Chain sale');
+    await t.enterText(find.byKey(const Key('entryItem')), 'Chain');
+    await t.tap(find.byKey(const Key('metal_gold')));
+    await t.tap(find.byKey(const Key('entryType_RN')));
+    await t.tap(find.byKey(const Key('deal_exchange')));
     await t.tap(find.byKey(const Key('entryOk')));
     await t.pumpAndSettle();
     // Delete the crossed-out line (6th) with its row's delete button;
@@ -91,6 +94,8 @@ void main() {
     expect(saved.entries[0].numberLabel, '1 / R');
     expect(saved.entries[0].checked, isTrue);
     expect(saved.entries[2].name, 'Amar G');
+    expect(saved.entries[2].numberLabel, '3 / RN');
+    expect(saved.entries[2].description, 'Gold · Chain · Exchange');
     expect(saved.unchecked, 7);
 
     await t.tap(find.byKey(const Key('createRegisterImage')));
@@ -137,29 +142,39 @@ void main() {
           entries: [
             SalesEntry(
               no: 1,
-              type: 'N',
+              type: CustomerType.newCustomer,
               name: 'Shubhir Ji',
               mobile: '9810106869',
-              item: 'Silver coin sale',
+              metal: Metal.silver,
+              item: 'Coin',
             ),
             SalesEntry(
               no: 2,
-              type: 'N',
+              type: CustomerType.newCustomer,
               name: 'Isha Ji',
-              item: 'Silver coin sale',
+              metal: Metal.silver,
+              item: 'Coin',
             ),
             SalesEntry(
               no: 3,
-              type: 'R',
+              type: CustomerType.repeat,
               name: 'Pintu Ji',
-              item: 'Bali exchange',
+              deal: Deal.exchange,
+              metal: Metal.others,
+              item: 'Bali',
             ),
-            SalesEntry(no: 4, type: 'R', name: 'Priya G', item: 'G-Ring sale'),
+            SalesEntry(
+              no: 4,
+              type: CustomerType.repeat,
+              name: 'Priya G',
+              item: 'G-Ring sale',
+            ),
             SalesEntry(
               no: 5,
-              type: 'N',
+              type: CustomerType.newCustomer,
               name: 'Mosa Ji',
-              item: 'Silver coin sale',
+              metal: Metal.silver,
+              item: 'Coin',
             ),
           ],
         ),
@@ -182,16 +197,16 @@ void main() {
     expect(rows.length, 10); // includes the crossed-out line
     expect(rows.map((r) => r.no), [4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     expect(rows.every((r) => !r.checked), isTrue);
+    String d(SalesEntry e) => '${e.type.code} ${e.description}';
     expect(rows[0].name, 'Pintu Ji');
-    expect(rows[0].item, 'Bali exchange');
+    expect(d(rows[0]), 'R Others · Bali · Exchange');
     expect(rows[3].name, 'Shivam');
-    expect(rows[3].item, 'Silver payal sale');
+    expect(d(rows[3]), 'R Silver · Payal · Sale');
     expect(rows[4].name, 'Mukesh Ji');
-    expect(rows[6].item, 'G-Chain sale');
-    expect(rows[7].item, 'Mala sale');
-    expect(rows[8].item, 'G-Coin sale');
-    expect(rows[9].type, 'N');
-    expect(rows[9].item, 'Silver coin sale');
+    expect(d(rows[6]), 'R Gold · Chain · Sale');
+    expect(d(rows[7]), 'R Others · Mala · Sale');
+    expect(d(rows[8]), 'R Gold · Coin · Sale');
+    expect(d(rows[9]), 'N Silver · Coin · Sale');
   });
 
   test('a page in two overlapping photos merges without repeats', () {
@@ -221,7 +236,7 @@ void main() {
     expect(r.entries.length, 10);
     expect(r.entries.map((e) => e.no), List.generate(10, (i) => i + 1));
     expect(r.parts, {1: m1.added, 2: m2.added});
-    expect(r.entries.last.item, 'Silver coin sale');
+    expect(r.entries.last.description, 'Silver · Coin · Sale');
 
     // Bottom photo taken first: move part 2 up, numbers follow.
     var x = const SalesRegister(date: '2026-11-01');
@@ -263,20 +278,36 @@ void main() {
     expect(rows[0].numberLabel, '1 / N');
     expect(rows[0].name, 'Shubhir Ji');
     expect(rows[0].mobile, '9810106869');
-    expect(rows[0].item, 'Silver coin sale');
+    expect(rows[0].description, 'Silver · Coin · Sale');
     expect(rows[1].numberLabel, '2 / R');
-    expect(rows[1].item, 'G-Chain sale');
+    expect(rows[1].description, 'Gold · Chain · Sale');
     expect(rows[2].name, '');
-    expect(rows[2].item, 'Mala sale');
+    expect(rows[2].numberLabel, '3 / R'); // no mark read: R
+    expect(rows[2].description, 'Others · Mala · Sale');
   });
 
   test('names and items learned from earlier registers', () {
     expect(cleanName('Pintuai'), 'Pintu Ji');
     expect(cleanName('neeraj ji'), 'Neeraj Ji');
     expect(cleanName('Neerej Ji', known: ['Neeraj Ji']), 'Neeraj Ji');
-    expect(cleanItem('Mola Sale'), 'Mala sale');
-    expect(cleanItem('Kundan set'), 'Kundan set'); // unknown: kept
-    expect(cleanItem('Kundan sel', known: ['Kundan set']), 'Kundan set');
+    String r(String raw, {List<String> known = const []}) {
+      final x = readItem(raw, known: known);
+      return '${x.metal.label} · ${x.item} · ${x.deal.label}';
+    }
+
+    expect(r('G-Chain Sale'), 'Gold · Chain · Sale');
+    expect(r('C-Coin Sale'), 'Gold · Coin · Sale'); // G read as C
+    expect(r('D-Ring sale'), 'Diamond · Ring · Sale');
+    expect(r("S'encoinSile"), 'Silver · Coin · Sale');
+    expect(r('Silvenpabol sor'), 'Silver · Payal · Sale');
+    expect(r('baliexchanee'), 'Others · Bali · Exchange');
+    expect(r('Mola Sale'), 'Others · Mala · Sale');
+    expect(r('Coin al'), 'Others · Coin · Sale');
+    expect(r('Kundan haar'), 'Others · Kundan Haar · Sale');
+    expect(r('Kundan sel', known: ['Kundan']), 'Others · Kundan · Sale');
+    expect(CustomerType.fromCode('R/N'), CustomerType.repeatNew);
+    expect(CustomerType.fromCode('n'), CustomerType.newCustomer);
+    expect(CustomerType.fromCode(''), CustomerType.repeat);
   });
 
   test('registers are saved per day and give a vocabulary', () async {
@@ -290,7 +321,12 @@ void main() {
     expect(r.nextNumber, 1);
     r = r.copyWith(
       entries: const [
-        SalesEntry(no: 1, type: 'N', name: 'Isha Ji', item: 'Silver coin sale'),
+        SalesEntry(
+          no: 1,
+          type: CustomerType.newCustomer,
+          name: 'Isha Ji',
+          item: 'Silver coin sale',
+        ),
         SalesEntry(no: 2, name: 'Unchecked', item: 'X', checked: false),
       ],
     );

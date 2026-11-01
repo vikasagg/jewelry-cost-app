@@ -7,24 +7,66 @@ import 'package:intl/intl.dart';
 import '../data/key_value_store.dart';
 import '../ocr/ocr_service.dart';
 
+/// R = repeat customer, N = new, RN = repeat-new (as marked in the
+/// register).
+enum CustomerType {
+  repeat('R', 'Repeat'),
+  newCustomer('N', 'New'),
+  repeatNew('RN', 'Repeat New');
+
+  const CustomerType(this.code, this.label);
+  final String code;
+  final String label;
+
+  /// "R", "N", "RN" (also "R/N", "R-N", "NR"); anything else is R.
+  static CustomerType fromCode(String? code) {
+    final c = (code ?? '').toUpperCase().replaceAll(RegExp(r'[^RN]'), '');
+    if (c.contains('R') && c.contains('N')) return repeatNew;
+    if (c == 'N') return newCustomer;
+    return repeat;
+  }
+}
+
+enum Deal {
+  sale('Sale'),
+  exchange('Exchange');
+
+  const Deal(this.label);
+  final String label;
+}
+
+enum Metal {
+  gold('Gold'),
+  silver('Silver'),
+  diamond('Diamond'),
+  others('Others');
+
+  const Metal(this.label);
+  final String label;
+}
+
 /// One line of the shop's handwritten customer register.
 class SalesEntry {
   const SalesEntry({
     required this.no,
-    this.type = '',
+    this.type = CustomerType.repeat,
     this.name = '',
     this.mobile = '',
+    this.deal = Deal.sale,
+    this.metal = Metal.gold,
     this.item = '',
     this.checked = true,
     this.part = 0,
   });
 
   final int no;
-
-  /// "R" (repeat customer), "N" (new) or empty.
-  final String type;
+  final CustomerType type;
   final String name;
   final String mobile;
+  final Deal deal;
+  final Metal metal;
+
+  /// The article, e.g. "Chain", "Payal", "Coin".
   final String item;
 
   /// False for rows read from a photo that nobody has looked at yet.
@@ -33,14 +75,20 @@ class SalesEntry {
   /// Which photo (1, 2, …) the line was read from; 0 = typed by hand.
   final int part;
 
-  /// "4 / R", or just "4".
-  String get numberLabel => type.isEmpty ? '$no' : '$no / $type';
+  /// "4 / R".
+  String get numberLabel => '$no / ${type.code}';
+
+  /// "Gold · Chain · Sale".
+  String get description =>
+      [metal.label, if (item.isNotEmpty) item, deal.label].join(' · ');
 
   SalesEntry copyWith({
     int? no,
-    String? type,
+    CustomerType? type,
     String? name,
     String? mobile,
+    Deal? deal,
+    Metal? metal,
     String? item,
     bool? checked,
     int? part,
@@ -49,6 +97,8 @@ class SalesEntry {
     type: type ?? this.type,
     name: name ?? this.name,
     mobile: mobile ?? this.mobile,
+    deal: deal ?? this.deal,
+    metal: metal ?? this.metal,
     item: item ?? this.item,
     checked: checked ?? this.checked,
     part: part ?? this.part,
@@ -56,23 +106,42 @@ class SalesEntry {
 
   Map<String, dynamic> toJson() => {
     'no': no,
-    'type': type,
+    'type': type.code,
     'name': name,
     'mobile': mobile,
+    'deal': deal.name,
+    'metal': metal.name,
     'item': item,
     'checked': checked,
     'part': part,
   };
 
-  factory SalesEntry.fromJson(Map<String, dynamic> j) => SalesEntry(
-    no: j['no'] as int? ?? 0,
-    type: j['type'] as String? ?? '',
-    name: j['name'] as String? ?? '',
-    mobile: j['mobile'] as String? ?? '',
-    item: j['item'] as String? ?? '',
-    checked: j['checked'] as bool? ?? true,
-    part: j['part'] as int? ?? 0,
-  );
+  factory SalesEntry.fromJson(Map<String, dynamic> j) {
+    final raw = j['item'] as String? ?? '';
+    // Lines saved before metal/deal were separate: read them from the item.
+    final old = j['metal'] == null ? readItem(raw) : null;
+    return SalesEntry(
+      no: j['no'] as int? ?? 0,
+      type: CustomerType.fromCode(j['type'] as String?),
+      name: j['name'] as String? ?? '',
+      mobile: j['mobile'] as String? ?? '',
+      deal:
+          old?.deal ??
+          Deal.values.firstWhere(
+            (d) => d.name == j['deal'],
+            orElse: () => Deal.sale,
+          ),
+      metal:
+          old?.metal ??
+          Metal.values.firstWhere(
+            (m) => m.name == j['metal'],
+            orElse: () => Metal.others,
+          ),
+      item: old?.item ?? raw,
+      checked: j['checked'] as bool? ?? true,
+      part: j['part'] as int? ?? 0,
+    );
+  }
 }
 
 /// The register for one day.
@@ -232,27 +301,27 @@ bool isSameLine(SalesEntry a, SalesEntry b) {
   return names >= 0.7 && similarity(itemA, itemB) >= 0.7;
 }
 
-/// Items the shop writes in the register (spelling used in reports).
-const registerItems = [
-  'Bali exchange',
-  'Old gold exchange',
-  'G-Ring sale',
-  'G-Chain sale',
-  'G-Coin sale',
-  'G-Earring sale',
-  'G-Bangle sale',
-  'G-Pendant sale',
-  'G-Nosepin sale',
-  'G-Mangalsutra sale',
-  'Diamond ring sale',
-  'Silver payal sale',
-  'Silver coin sale',
-  'Silver earring sale',
-  'Silver chain sale',
-  'Coin sale',
-  'Mala sale',
-  'Repair',
-  'Order booking',
+/// Articles written in the register (spelling used in reports).
+const registerArticles = [
+  'Ring',
+  'Chain',
+  'Coin',
+  'Earring',
+  'Bangle',
+  'Pendant',
+  'Nosepin',
+  'Mangalsutra',
+  'Payal',
+  'Mala',
+  'Bali',
+  'Necklace',
+  'Bracelet',
+  'Kada',
+  'Tops',
+  'Locket',
+  'Nath',
+  'Tikka',
+  'Set',
 ];
 
 String _letters(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
@@ -316,11 +385,94 @@ String cleanName(String raw, {Iterable<String> known = const []}) {
   return closest(name, known, atLeast: 0.8) ?? name;
 }
 
-/// Tidies an item read from handwriting, matching the shop's usual items.
-String cleanItem(String raw, {Iterable<String> known = const []}) {
-  final t = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
-  if (t.isEmpty) return '';
-  return closest(t, {...known, ...registerItems}, atLeast: 0.55) ?? t;
+String _title(String t) => [
+  for (final w in t.split(RegExp(r'\s+')))
+    if (w.isNotEmpty) w[0].toUpperCase() + w.substring(1).toLowerCase(),
+].join(' ');
+
+/// Splits a register item such as "G-Chain sale", "Silver payal sale" or
+/// "Bali exchange" into sale/exchange, metal (G- gold, D- diamond, S- or
+/// "silver" silver, anything else others) and the article.
+({Deal deal, Metal metal, String item}) readItem(
+  String raw, {
+  Iterable<String> known = const [],
+}) {
+  var t = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+  var metal = Metal.others;
+  // "G-…", "D-…", "S'…": the metal letter before a dash (C and 6 are
+  // how a handwritten G is often read).
+  final prefix = RegExp(r"^([GgCc6DdSs5])\s*[-'’.]\s*").firstMatch(t);
+  if (prefix != null) {
+    metal = switch (prefix.group(1)!.toUpperCase()) {
+      'D' => Metal.diamond,
+      'S' || '5' => Metal.silver,
+      _ => Metal.gold,
+    };
+    t = t.substring(prefix.end);
+  } else {
+    final first = t.split(' ').first;
+    final head = _letters(t.length > 6 ? t.substring(0, 6) : t);
+    if (similarity(first, 'silver') >= 0.6 ||
+        similarity(head, 'silver') >= 0.66) {
+      metal = Metal.silver;
+      t = similarity(first, 'silver') >= 0.6
+          ? t.substring(first.length)
+          : t.substring(6);
+    } else if (similarity(first, 'gold') >= 0.75) {
+      metal = Metal.gold;
+      t = t.substring(first.length);
+    } else if (similarity(first, 'diamond') >= 0.7 ||
+        first.toLowerCase() == 'dia') {
+      metal = Metal.diamond;
+      t = t.substring(first.length);
+    }
+  }
+  t = t.replaceAll(RegExp(r'^[^A-Za-z]+'), '').trim();
+
+  // Sale or exchange: the last word (or the end of a run-together word).
+  var deal = Deal.sale;
+  final words = t.split(' ').where((w) => w.isNotEmpty).toList();
+  bool like(String w, String target, double at) => similarity(w, target) >= at;
+  if (_letters(t).contains('exch') ||
+      (words.isNotEmpty && like(words.last, 'exchange', 0.6))) {
+    deal = Deal.exchange;
+  }
+  // "sale" is often misread ("sor", "sle"): a short last word with an s.
+  bool saleLike(String w) =>
+      like(w, 'sale', 0.5) ||
+      (_letters(w).length <= 4 && _letters(w).startsWith('s'));
+  if (words.length > 1 &&
+      (saleLike(words.last) || like(words.last, 'exchange', 0.6))) {
+    words.removeLast();
+  } else if (words.length == 1) {
+    final w = words.single;
+    final l = _letters(w);
+    final ex = l.indexOf('exch');
+    if (ex > 1) {
+      words[0] = w.substring(0, w.toLowerCase().indexOf('exch'));
+    } else if (l.length > 6 && like(l.substring(l.length - 4), 'sale', 0.5)) {
+      words[0] = w.substring(0, w.length - 4);
+    }
+  }
+  final rest = words.join(' ').replaceAll(RegExp(r'[^A-Za-z ]'), '').trim();
+  if (rest.isEmpty) return (deal: deal, metal: metal, item: '');
+
+  // Match the shop's articles: the whole text, else its best word.
+  final vocab = {...known, ...registerArticles};
+  final whole = closest(rest, vocab, atLeast: 0.6);
+  if (whole != null) return (deal: deal, metal: metal, item: whole);
+  String? best;
+  var score = 0.6;
+  for (final w in rest.split(' ')) {
+    for (final v in vocab) {
+      final sc = similarity(w, v);
+      if (sc > score) {
+        score = sc;
+        best = v;
+      }
+    }
+  }
+  return (deal: deal, metal: metal, item: best ?? _title(rest));
 }
 
 /// Words on the page that are not register entries.
@@ -350,7 +502,9 @@ List<SalesEntry> parseRegisterPage(
     final digits = t.replaceAll(RegExp(r'\D'), '');
     if (digits.length >= 10) {
       mobiles.add(b);
-    } else if (RegExp(r'^([0-9]{1,3}|[RNrn]|[RN]\s*/\s*[RN])$').hasMatch(t)) {
+    } else if (RegExp(
+      r'^([0-9]{1,3}|[RNrn]|[RNrn]\s*[/-]?\s*[RNrn])$',
+    ).hasMatch(t)) {
       markers.add(b);
     } else if (_letters(t).length >= 2) {
       words.add(b);
@@ -446,7 +600,7 @@ List<SalesEntry> parseRegisterPage(
     final r = nearest(m.centerY - (m.centerX >= split ? offset : 0));
     if (r == null) continue;
     final t = m.text.trim().toUpperCase().replaceAll(' ', '');
-    if (RegExp(r'^[RN/]+$').hasMatch(t)) r['type'] = t.replaceAll('/', '-');
+    if (RegExp(r'^[RN/-]+$').hasMatch(t)) r['type'] = t;
   }
   for (final m in mobiles) {
     final r = nearest(m.centerY);
@@ -459,24 +613,26 @@ List<SalesEntry> parseRegisterPage(
         (identical(anchor, left) ? r['anchor'] : r['other']) as OcrBox?;
     final itemBox =
         (identical(anchor, left) ? r['other'] : r['anchor']) as OcrBox?;
-    var type = r['type'] as String? ?? '';
+    var type = r['type'] as String?;
     var nameText = nameBox?.text.trim() ?? '';
     // "NMosa ji": the R/N mark written right against the name.
     final lead = RegExp(r'^([RN])([A-Z][a-z].*)$').firstMatch(nameText);
     if (lead != null) {
-      type = type.isEmpty ? lead.group(1)! : type;
+      type ??= lead.group(1)!;
       nameText = lead.group(2)!;
     }
     final name = cleanName(nameText, known: knownNames);
-    final item = cleanItem(itemBox?.text ?? '', known: knownItems);
-    if (name.isEmpty && item.isEmpty) continue;
+    final read = readItem(itemBox?.text ?? '', known: knownItems);
+    if (name.isEmpty && (itemBox?.text.trim() ?? '').isEmpty) continue;
     out.add(
       SalesEntry(
         no: startNo + out.length,
-        type: type,
+        type: CustomerType.fromCode(type),
         name: name,
         mobile: r['mobile'] as String? ?? '',
-        item: item,
+        deal: read.deal,
+        metal: read.metal,
+        item: read.item,
         checked: false,
       ),
     );

@@ -197,13 +197,14 @@ class _SalesRegisterScreenState extends State<SalesRegisterScreen> {
     final e = index == null
         ? SalesEntry(no: _reg.nextNumber)
         : _reg.entries[index];
-    final vocab = _book.vocabulary();
-    final result = await showSalesEntryDialog(
-      context,
-      e,
-      items: {...vocab.items, ...registerItems}.toList(),
-      isNew: index == null,
-    );
+    // A message here would cover the editor's Save button.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final result = await Navigator.of(context)
+        .push<({SalesEntry entry, bool delete})>(
+          MaterialPageRoute(
+            builder: (_) => SalesEntryScreen(entry: e, isNew: index == null),
+          ),
+        );
     if (result == null) return;
     final list = [..._reg.entries];
     if (result.delete) {
@@ -491,10 +492,7 @@ class _EntryTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
-          [
-            e.item.isEmpty ? '— item —' : e.item,
-            if (e.mobile.isNotEmpty) e.mobile,
-          ].join(' · '),
+          [e.description, if (e.mobile.isNotEmpty) e.mobile].join(' · '),
         ),
         trailing: Icon(
           e.checked ? Icons.edit_outlined : Icons.error_outline,
@@ -505,131 +503,272 @@ class _EntryTile extends StatelessWidget {
   }
 }
 
-/// Edits one register line; returns it (checked) or a delete request.
-Future<({SalesEntry entry, bool delete})?> showSalesEntryDialog(
-  BuildContext context,
-  SalesEntry e, {
-  required List<String> items,
-  bool isNew = false,
-}) {
-  // Controllers are left to the garbage collector: disposing them as the
-  // dialog pops breaks its closing animation.
-  final no = TextEditingController(text: '${e.no}');
-  final name = TextEditingController(text: e.name);
-  final mobile = TextEditingController(text: e.mobile);
-  final item = TextEditingController(text: e.item);
-  var type = e.type;
-  return showDialog<({SalesEntry entry, bool delete})>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setLocal) => AlertDialog(
-        title: Text(isNew ? 'Add register line' : 'Register line'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 80,
-                      child: TextField(
-                        key: const Key('entryNo'),
-                        controller: no,
-                        keyboardType: TextInputType.number,
+/// Adds or edits one register line, laid out for a phone: customer,
+/// then what was bought. Pops with the line (marked checked) or a delete
+/// request.
+class SalesEntryScreen extends StatefulWidget {
+  const SalesEntryScreen({super.key, required this.entry, this.isNew = false});
+  final SalesEntry entry;
+  final bool isNew;
+
+  @override
+  State<SalesEntryScreen> createState() => _SalesEntryScreenState();
+}
+
+class _SalesEntryScreenState extends State<SalesEntryScreen> {
+  late final _no = TextEditingController(text: '${widget.entry.no}');
+  late final _name = TextEditingController(text: widget.entry.name);
+  late final _mobile = TextEditingController(text: widget.entry.mobile);
+  late final _item = TextEditingController(text: widget.entry.item);
+  late CustomerType _type = widget.entry.type;
+  late Deal _deal = widget.entry.deal;
+  late Metal _metal = widget.entry.metal;
+
+  @override
+  void dispose() {
+    for (final c in [_no, _name, _mobile, _item]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() => Navigator.pop(context, (
+    entry: widget.entry.copyWith(
+      no: int.tryParse(_no.text) ?? widget.entry.no,
+      type: _type,
+      name: _name.text.trim(),
+      mobile: _mobile.text.trim(),
+      deal: _deal,
+      metal: _metal,
+      item: _item.text.trim(),
+      checked: true,
+    ),
+    delete: false,
+  ));
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(
+        widget.isNew ? 'Add register line' : 'Line ${widget.entry.no}',
+      ),
+      actions: [
+        if (!widget.isNew)
+          IconButton(
+            key: const Key('entryDelete'),
+            tooltip: 'Delete this line',
+            icon: const Icon(Icons.delete_outline, color: AppColors.error),
+            onPressed: () =>
+                Navigator.pop(context, (entry: widget.entry, delete: true)),
+          ),
+      ],
+    ),
+    body: SafeArea(
+      child: ResponsiveBody(
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                children: [
+                  _Section(
+                    title: 'Customer',
+                    children: [
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 84,
+                            child: TextField(
+                              key: const Key('entryNo'),
+                              controller: _no,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              decoration: const InputDecoration(
+                                labelText: 'No.',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              key: const Key('entryName'),
+                              controller: _name,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: const InputDecoration(
+                                labelText: 'Name',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const Key('entryMobile'),
+                        controller: _mobile,
+                        keyboardType: TextInputType.phone,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
                         ],
-                        decoration: const InputDecoration(labelText: 'No.'),
+                        decoration: const InputDecoration(
+                          labelText: 'Mobile',
+                          prefixText: '+91 ',
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Wrap(
-                        spacing: 6,
-                        children: [
-                          for (final t in const ['R', 'N'])
-                            ChoiceChip(
-                              key: Key('entryType_$t'),
-                              label: Text(t == 'R' ? 'R · repeat' : 'N · new'),
-                              selected: type == t,
-                              onSelected: (on) =>
-                                  setLocal(() => type = on ? t : ''),
-                            ),
-                        ],
+                      const SizedBox(height: 14),
+                      const _Label('Customer type'),
+                      _Choices<CustomerType>(
+                        keyPrefix: 'entryType_',
+                        value: _type,
+                        options: {
+                          for (final t in CustomerType.values)
+                            t: '${t.code} · ${t.label}',
+                        },
+                        keyOf: (t) => t.code,
+                        onChanged: (v) => setState(() => _type = v),
                       ),
-                    ),
-                  ],
-                ),
-                TextField(
-                  key: const Key('entryName'),
-                  controller: name,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                ),
-                TextField(
-                  key: const Key('entryMobile'),
-                  controller: mobile,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  decoration: const InputDecoration(labelText: 'Mobile'),
-                ),
-                TextField(
-                  key: const Key('entryItem'),
-                  controller: item,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Item'),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: -6,
-                  children: [
-                    for (final i in items.take(12))
-                      ActionChip(
-                        label: Text(i, style: const TextStyle(fontSize: 12)),
-                        onPressed: () => setLocal(() => item.text = i),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _Section(
+                    title: 'Item',
+                    children: [
+                      const _Label('Sale or exchange'),
+                      _Choices<Deal>(
+                        keyPrefix: 'deal_',
+                        value: _deal,
+                        options: {for (final d in Deal.values) d: d.label},
+                        keyOf: (d) => d.name,
+                        onChanged: (v) => setState(() => _deal = v),
                       ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          if (!isNew)
-            TextButton(
-              key: const Key('entryDelete'),
-              onPressed: () => Navigator.pop(context, (entry: e, delete: true)),
-              style: TextButton.styleFrom(foregroundColor: AppColors.error),
-              child: const Text('Delete'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('entryOk'),
-            onPressed: () => Navigator.pop(context, (
-              entry: e.copyWith(
-                no: int.tryParse(no.text) ?? e.no,
-                type: type,
-                name: name.text.trim(),
-                mobile: mobile.text.trim(),
-                item: item.text.trim(),
-                checked: true,
+                      const SizedBox(height: 10),
+                      const _Label('Metal'),
+                      _Choices<Metal>(
+                        keyPrefix: 'metal_',
+                        value: _metal,
+                        options: {for (final m in Metal.values) m: m.label},
+                        keyOf: (m) => m.name,
+                        onChanged: (v) => setState(() => _metal = v),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const Key('entryItem'),
+                        controller: _item,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Item',
+                          hintText: 'e.g. Chain, Ring, Coin, Payal',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              delete: false,
-            )),
-            child: const Text('OK'),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: const Key('entryOk'),
+                  onPressed: _save,
+                  icon: const Icon(Icons.check),
+                  label: Text(widget.isNew ? 'Add line' : 'Save line'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _Section extends StatelessWidget {
+  const _Section({required this.title, required this.children});
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
+          const SizedBox(height: 8),
+          ...children,
         ],
       ),
+    ),
+  );
+}
+
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Text(text, style: const TextStyle(color: AppColors.muted)),
+  );
+}
+
+/// A row of radio buttons that wraps on narrow phones.
+class _Choices<T> extends StatelessWidget {
+  const _Choices({
+    required this.keyPrefix,
+    required this.value,
+    required this.options,
+    required this.keyOf,
+    required this.onChanged,
+  });
+  final String keyPrefix;
+  final T value;
+  final Map<T, String> options;
+  final String Function(T) keyOf;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) => RadioGroup<T>(
+    groupValue: value,
+    onChanged: (v) {
+      if (v != null) onChanged(v);
+    },
+    child: Wrap(
+      spacing: 4,
+      children: [
+        for (final o in options.entries)
+          InkWell(
+            key: Key('$keyPrefix${keyOf(o.key)}'),
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => onChanged(o.key),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Radio<T>(value: o.key),
+                  Text(
+                    o.value,
+                    style: TextStyle(
+                      fontWeight: o.key == value
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     ),
   );
 }
