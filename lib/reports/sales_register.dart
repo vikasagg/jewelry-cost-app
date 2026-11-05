@@ -29,7 +29,9 @@ enum CustomerType {
 
 enum Deal {
   sale('Sale'),
-  exchange('Exchange');
+  exchange('Exchange'),
+  enquiry('Enquiry'),
+  booking('Booking');
 
   const Deal(this.label);
   final String label;
@@ -398,6 +400,27 @@ String _title(String t) => [
   Iterable<String> known = const [],
 }) {
   var t = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+  // Enquiry or booking: the word can be anywhere ("Chain enquiry",
+  // "Booking G-Ring", "ring order").
+  Deal? visit;
+  final kept = <String>[];
+  for (final w in t.split(' ')) {
+    final l = _letters(w);
+    if (l.startsWith('enq') ||
+        l.startsWith('inq') ||
+        similarity(w, 'enquiry') >= 0.7 ||
+        similarity(w, 'inquiry') >= 0.7) {
+      visit = Deal.enquiry;
+    } else if (l.startsWith('book') ||
+        similarity(w, 'booking') >= 0.7 ||
+        l == 'order' ||
+        similarity(w, 'order') >= 0.8) {
+      visit = Deal.booking;
+    } else {
+      kept.add(w);
+    }
+  }
+  t = kept.join(' ');
   var metal = Metal.others;
   // "G-…", "D-…", "S'…": the metal letter before a dash (C and 6 are
   // how a handwritten G is often read).
@@ -430,11 +453,13 @@ String _title(String t) => [
   t = t.replaceAll(RegExp(r'^[^A-Za-z]+'), '').trim();
 
   // Sale or exchange: the last word (or the end of a run-together word).
-  var deal = Deal.sale;
+  // Enquiry and booking were found above.
+  var deal = visit ?? Deal.sale;
   final words = t.split(' ').where((w) => w.isNotEmpty).toList();
   bool like(String w, String target, double at) => similarity(w, target) >= at;
-  if (_letters(t).contains('exch') ||
-      (words.isNotEmpty && like(words.last, 'exchange', 0.6))) {
+  if (visit == null &&
+      (_letters(t).contains('exch') ||
+          (words.isNotEmpty && like(words.last, 'exchange', 0.6)))) {
     deal = Deal.exchange;
   }
   // "sale" is often misread ("sor", "sle"): a short last word with an s.

@@ -635,7 +635,7 @@ class _SalesEntryScreenState extends State<SalesEntryScreen> {
                   _Section(
                     title: 'Item',
                     children: [
-                      const _Label('Sale or exchange'),
+                      const _Label('Sale, exchange, enquiry or booking'),
                       _Choices<Deal>(
                         keyPrefix: 'deal_',
                         value: _deal,

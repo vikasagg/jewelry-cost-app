@@ -14,14 +14,7 @@ Future<Uint8List> renderRegisterPng(
   double width = 1600,
 }) async {
   const margin = 30.0, rowH = 50.0, pad = 12.0;
-  const columns = [
-    'No. / R-N',
-    'Name',
-    'Mobile',
-    'Metal',
-    'Item',
-    'Sale / Exch.',
-  ];
+  const columns = ['No. / R-N', 'Name', 'Mobile', 'Metal', 'Item', 'Type'];
   const fractions = [0.11, 0.25, 0.17, 0.12, 0.20, 0.15];
   const ink = Color(0xFF1F1F1F);
   const line = Color(0xFF2B2B2B);
@@ -30,7 +23,7 @@ Future<Uint8List> renderRegisterPng(
   final colW = [for (final f in fractions) tableW * f];
   final rows = r.entries.isEmpty ? [const SalesEntry(no: 0)] : r.entries;
   const titleH = 118.0;
-  final height = titleH + rowH * (rows.length + 1) + margin + 70;
+  final height = titleH + rowH * (rows.length + 1) + margin + 100;
 
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
@@ -137,20 +130,26 @@ Future<Uint8List> renderRegisterPng(
     );
   }
 
-  // Totals: sales/exchanges, by metal, new/repeat customers.
+  // Totals: sales, exchanges, enquiries, bookings; by metal; customers.
   int count(bool Function(SalesEntry) f) => r.entries.where(f).length;
-  final totals = [
+  const sep = '   ·   ';
+  final visits = [
     for (final d in Deal.values) '${d.label} ${count((e) => e.deal == d)}',
+  ].join(sep);
+  final who = [
     for (final m in Metal.values) '${m.label} ${count((e) => e.metal == m)}',
     for (final t in CustomerType.values)
       '${t.label} ${count((e) => e.type == t)}',
-  ].join('   ·   ');
+  ].join(sep);
+  const summary = Color(0xFF6B5B45);
   text(
-    'Total ${r.entries.length}   ·   $totals',
-    Offset(margin, top + tableH + 40),
+    'Total ${r.entries.length}$sep$visits',
+    Offset(margin, top + tableH + 36),
     size: 21,
-    color: const Color(0xFF6B5B45),
+    bold: true,
+    color: summary,
   );
+  text(who, Offset(margin, top + tableH + 68), size: 21, color: summary);
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(width.round(), height.round());

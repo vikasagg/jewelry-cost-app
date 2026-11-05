@@ -71,7 +71,7 @@ void main() {
     await t.enterText(find.byKey(const Key('entryItem')), 'Chain');
     await t.tap(find.byKey(const Key('metal_gold')));
     await t.tap(find.byKey(const Key('entryType_RN')));
-    await t.tap(find.byKey(const Key('deal_exchange')));
+    await t.tap(find.byKey(const Key('deal_booking')));
     await t.tap(find.byKey(const Key('entryOk')));
     await t.pumpAndSettle();
     // Delete the crossed-out line (6th) with its row's delete button;
@@ -95,7 +95,7 @@ void main() {
     expect(saved.entries[0].checked, isTrue);
     expect(saved.entries[2].name, 'Amar G');
     expect(saved.entries[2].numberLabel, '3 / RN');
-    expect(saved.entries[2].description, 'Gold · Chain · Exchange');
+    expect(saved.entries[2].description, 'Gold · Chain · Booking');
     expect(saved.unchecked, 7);
 
     await t.tap(find.byKey(const Key('createRegisterImage')));
@@ -162,6 +162,20 @@ void main() {
               deal: Deal.exchange,
               metal: Metal.others,
               item: 'Bali',
+            ),
+            SalesEntry(
+              no: 6,
+              name: 'Neeraj Ji',
+              deal: Deal.enquiry,
+              item: 'Chain',
+            ),
+            SalesEntry(
+              no: 7,
+              type: CustomerType.repeatNew,
+              name: 'Ved Prakash Ji',
+              deal: Deal.booking,
+              metal: Metal.diamond,
+              item: 'Ring',
             ),
             SalesEntry(
               no: 4,
@@ -305,6 +319,11 @@ void main() {
     expect(r('Coin al'), 'Others · Coin · Sale');
     expect(r('Kundan haar'), 'Others · Kundan Haar · Sale');
     expect(r('Kundan sel', known: ['Kundan']), 'Others · Kundan · Sale');
+    expect(r('Chain enquiry'), 'Others · Chain · Enquiry');
+    expect(r('G-Ring Enq'), 'Gold · Ring · Enquiry');
+    expect(r('Booking G-Chain'), 'Gold · Chain · Booking');
+    expect(r('S-payal order'), 'Silver · Payal · Booking');
+    expect(r('Bali exchange'), 'Others · Bali · Exchange');
     expect(CustomerType.fromCode('R/N'), CustomerType.repeatNew);
     expect(CustomerType.fromCode('n'), CustomerType.newCustomer);
     expect(CustomerType.fromCode(''), CustomerType.repeat);
