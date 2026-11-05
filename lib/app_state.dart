@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'billing/bill.dart';
 import 'data/key_value_store.dart';
 import 'data/repositories.dart';
+import 'metals/metal_prices.dart';
 import 'models/calculation_record.dart';
 import 'models/gold_rates.dart';
 import 'models/jewellery_input.dart';
@@ -27,6 +28,7 @@ class AppState extends ChangeNotifier {
        history = HistoryRepository(store),
        stock = StockBook(store, clock: clock),
        sales = SalesRegisterBook(store, clock: clock),
+       metalPrices = MetalPriceBook(store, clock: clock),
        _clock = clock ?? DateTime.now {
     _current = _rates.load();
     stockSync = StockSync(
@@ -47,6 +49,9 @@ class AppState extends ChangeNotifier {
 
   /// Today's Sales: the customer register, day by day.
   final SalesRegisterBook sales;
+
+  /// Gold & Silver: the day's prices, day by day.
+  final MetalPriceBook metalPrices;
 
   /// Shares [stock] with the database on the shop PC.
   late final StockSync stockSync;

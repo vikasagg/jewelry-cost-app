@@ -4,10 +4,12 @@ import 'package:intl/intl.dart';
 
 import '../../app_state.dart';
 import '../../core/money.dart';
+import '../../metals/metal_prices.dart';
 import '../../models/purity.dart';
 import '../../stock/stock_models.dart';
 import '../theme.dart';
 import 'dashboard_screen.dart';
+import 'metals/metal_prices_screen.dart';
 import 'rate_setup_screen.dart';
 import 'reports/reports_screen.dart';
 import 'stock/stock_home_screen.dart';
@@ -99,6 +101,22 @@ class HomeScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 14),
+                            ListenableBuilder(
+                              listenable: state.metalPrices,
+                              builder: (context, _) => _ModeCard(
+                                key: const Key('openMetalPrices'),
+                                filled: false,
+                                icon: Icons.currency_rupee,
+                                title: 'Gold & Silver',
+                                subtitle: _metalStatus(
+                                  state.metalPrices.byDate(
+                                    state.metalPrices.today,
+                                  ),
+                                ),
+                                onTap: () => open(const MetalPricesScreen()),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
                             _ModeCard(
                               key: const Key('openReports'),
                               filled: false,
@@ -128,6 +146,15 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Today's prices at a glance, e.g. "Gold ₹1,30,000 · Silver ₹1,60,000".
+  static String _metalStatus(MetalPrice? p) {
+    if (p == null) return "Record today's prices";
+    return [
+      if (p.gold24Per10g != null) 'Gold ${rupees(p.gold24Per10g!)}',
+      if (p.silverPerKg != null) 'Silver ${rupees(p.silverPerKg!)}/kg',
+    ].join(' · ');
   }
 
   /// Today's count at a glance, e.g. "Today: 9 of 14 counted · Draft".
