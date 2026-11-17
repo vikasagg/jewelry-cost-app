@@ -203,9 +203,15 @@ class HistoryRepository {
   Future<void> saveBill(Bill bill) =>
       _store.put('$_billPrefix${bill.billNo}', jsonEncode(bill.toJson()));
 
-  /// Takes the next bill number, e.g. "DJB-0001".
+  /// Asks the shop PC for the next number of a counter (so phones never
+  /// hand out the same bill number); null when it cannot be reached.
+  Future<int?> Function(String counter, int atLeast)? remoteNumber;
+
+  /// Takes the next bill number, e.g. "DJB-0001": from the shop PC when it
+  /// is reachable, else from this phone's counter.
   Future<String> takeBillNumber() async {
-    final n = (int.tryParse(_store.get(_billCounterKey) ?? '') ?? 0) + 1;
+    final here = (int.tryParse(_store.get(_billCounterKey) ?? '') ?? 0) + 1;
+    final n = await remoteNumber?.call(_billCounterKey, here) ?? here;
     await _store.put(_billCounterKey, '$n');
     return 'DJB-${n.toString().padLeft(4, '0')}';
   }

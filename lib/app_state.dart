@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'billing/bill.dart';
 import 'data/key_value_store.dart';
 import 'data/repositories.dart';
+import 'data/syncing_store.dart';
 import 'metals/metal_prices.dart';
 import 'models/calculation_record.dart';
 import 'models/gold_rates.dart';
@@ -15,11 +16,24 @@ import 'pricing/pricing_engine.dart';
 import 'reports/sales_register.dart';
 import 'stock/stock_book.dart';
 import 'stock/stock_sync.dart';
+import 'sync/data_sync.dart';
 
 /// App-wide state: current gold rates, pricing defaults and history.
 class AppState extends ChangeNotifier {
   AppState(
     KeyValueStore store, {
+    DateTime Function()? clock,
+    http.Client? httpClient,
+    String? defaultServerUrl,
+  }) : this._(
+         SyncingStore(store, isShared: isSharedKey),
+         clock: clock,
+         httpClient: httpClient,
+         defaultServerUrl: defaultServerUrl,
+       );
+
+  AppState._(
+    SyncingStore store, {
     DateTime Function()? clock,
     http.Client? httpClient,
     String? defaultServerUrl,
@@ -37,7 +51,18 @@ class AppState extends ChangeNotifier {
       client: httpClient,
       clock: clock,
       defaultUrl: defaultServerUrl,
+      data: DataSync(store, onRemoteChange: _remoteChanged),
     );
+    store.onChange = (_) => stockSync.changed();
+    history.remoteNumber = stockSync.nextNumber;
+  }
+
+  /// Another phone's changes arrived from the shop PC: show them.
+  void _remoteChanged() {
+    _current = _rates.load();
+    notifyListeners();
+    sales.refresh();
+    metalPrices.refresh();
   }
 
   final RatesRepository _rates;

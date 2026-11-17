@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/key_value_store.dart';
+import '../sync/data_sync.dart';
 import 'stock_book.dart';
 import 'stock_models.dart';
 
@@ -276,6 +277,7 @@ class StockSync extends ChangeNotifier {
     DateTime Function()? clock,
     this.interval = const Duration(seconds: 20),
     String? defaultUrl,
+    this.data,
   }) : _client = client,
        _clock = clock ?? DateTime.now,
        _defaultUrl = defaultUrl {
@@ -289,6 +291,20 @@ class StockSync extends ChangeNotifier {
   final DateTime Function() _clock;
   final Duration interval;
   final String? _defaultUrl;
+
+  /// Everything else the app records (estimates, bills, registers,
+  /// prices, settings), sent in the same rounds.
+  final DataSync? data;
+  late final http.Client _dataClient = _client ?? http.Client();
+
+  /// Sends a change soon (called when data changes on this phone).
+  void changed() => _schedulePush();
+
+  /// The next bill number from the PC; null when it cannot be reached.
+  Future<int?> nextNumber(String counter, int atLeast) async =>
+      !enabled || data == null
+      ? null
+      : data!.nextNumber(serverUrl, _dataClient, counter, atLeast);
 
   static const _urlKey = 'stock_server_url';
   static const _staffKey = 'stock_staff';
@@ -458,9 +474,14 @@ class StockSync extends ChangeNotifier {
         // PC set up before personal PINs: PIN steps not installed yet.
       }
       await _store.put(_formatKey, recordFormat);
+      await data?.sync(serverUrl, _dataClient);
       state = SyncState.synced;
       lastSync = _clock();
-      lastError = rejected;
+      lastError =
+          rejected ??
+          (data?.rejected.isNotEmpty ?? false
+              ? 'Not accepted by the PC: ${data!.rejected.join(', ')}'
+              : null);
     } catch (e) {
       state = SyncState.offline;
       lastError = e.toString();

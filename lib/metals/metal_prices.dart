@@ -73,6 +73,9 @@ String metalPriceText(MetalPrice p) {
 
 /// Recorded prices, one per day, on this phone.
 class MetalPriceBook extends ChangeNotifier {
+  /// Shows changes that arrived from the shop PC.
+  void refresh() => notifyListeners();
+
   MetalPriceBook(this._store, {DateTime Function()? clock})
     : _clock = clock ?? DateTime.now;
 

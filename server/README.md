@@ -1,7 +1,10 @@
 # Shop PC database (PocketBase)
 
-Daily stock counts are kept on each phone (they work offline) and shared
-through PocketBase running on the shop PC. Tested with PocketBase 0.40.5.
+Everything the app records is kept on each phone (it works offline) and
+saved on the shop PC in PocketBase, which shares it with the other phones:
+stock counts, Price Calculator estimates (with the tag photo), bills, Today's
+Sales registers, gold & silver prices and the gold rate. Tested with
+PocketBase 0.40.5.
 
 ## One-time setup
 
@@ -24,22 +27,33 @@ through PocketBase running on the shop PC. Tested with PocketBase 0.40.5.
    * `stock_count_items` — one row per counted item per day: item,
      expected, counted, difference, remark, keypad working, counted by,
      approved by, status (kept up to date by `pb_hooks`)
+   * `estimates` — every saved estimate: tag, item, purity, weights, total,
+     and the tag `photo`
+   * `bills` — bill number, customer, phone, address, payment, items, total
+     (bill numbers come from the PC, so two phones never repeat one)
+   * `sales_registers` and `sales_register_lines` — Today's Sales, one row
+     per register line
+   * `metal_prices` — gold 24K per 10 g and silver per kg, per day
+   * `settings` — the gold rate used by the Price Calculator, counters
+
+   Each of these has `data` (the full record as the app keeps it) and
+   `deleted`: a record deleted on a phone stays on the PC, marked deleted.
 
 3. Find the PC address with `ipconfig` (IPv4 Address, e.g. `192.168.1.10`).
    Reserve this address in the Wi-Fi router so it does not change.
 
 ## Connect the phones
 
-* **Android app:** Stock Reconciliation → server icon (top right) → enter
-  `192.168.1.10:8090` → Test → Save.
+* **Android app:** home screen → tap the line at the bottom ("Saved on this
+  phone only…") → enter `192.168.1.10:8090` → Test → Save. Everything
+  already on the phone is sent to the PC once.
 * **iPhone / any browser:** unzip `damiyaas-web-for-shop-pc.zip` (from the
   same release) into a `pb_public` folder next to `pocketbase.exe`, restart
   PocketBase, then open `http://192.168.1.10:8090` on the phone and use
   Share → Add to Home Screen. It connects to the PC by itself.
 
-The status bar on the Stock screen shows "Synced with shop PC", or
-"Shop PC not reachable — saved on this phone" (counts are sent when the PC
-is back).
+The home screen shows "Saved on the shop PC", or "Shop PC not reachable ·
+saved on this phone, sent later" (changes are sent when the PC is back).
 
 ## Personal PINs
 
@@ -61,7 +75,7 @@ Add, edit or deactivate staff in the admin panel: `http://127.0.0.1:8090/_/`
 
 ## Notes
 
-* Anyone on the shop Wi-Fi can read and save stock counts (no login yet);
-  deleting a day is only possible in the admin panel. Keep the Wi-Fi
+* Anyone on the shop Wi-Fi can read and save the shop's records (no login
+  yet); deleting is only possible in the admin panel. Keep the Wi-Fi
   password private.
 * Back up the `pb_data` folder (all data) regularly.
