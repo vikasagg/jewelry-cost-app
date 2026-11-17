@@ -8,6 +8,7 @@ import '../../models/gold_rates.dart';
 import '../../models/jewellery_input.dart';
 import '../../models/purity.dart';
 import '../../ocr/tag_parser.dart';
+import '../../stock/stock_lookup.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'result_screen.dart';
@@ -230,6 +231,55 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
   }
 
   void _confirm(String key) => setState(() => _uncertain.remove(key));
+
+  bool _lookingUp = false;
+
+  void _snack(String msg) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(msg)));
+
+  /// Finds the tag number in the shop's stock (stock_items on the shop PC)
+  /// and fills in weights, purity, diamonds, stones, polki and making.
+  Future<void> _lookupTag() async {
+    final tag = _c['tagNumber']!.text.trim().toUpperCase();
+    if (tag.isEmpty || _lookingUp) return;
+    final state = AppScope.read(context);
+    final server = state.stockSync.server;
+    if (server == null) {
+      _snack('Connect the shop PC to look up tags (home screen, bottom line)');
+      return;
+    }
+    setState(() => _lookingUp = true);
+    Map<String, dynamic>? item;
+    try {
+      item = await server.stockItemByTag(tag);
+    } catch (_) {
+      if (mounted) _snack('Shop PC not reachable — enter the details by hand');
+      return;
+    } finally {
+      if (mounted) setState(() => _lookingUp = false);
+    }
+    if (!mounted) return;
+    if (item == null) {
+      _snack('Tag $tag is not in the shop stock');
+      return;
+    }
+    final found = item;
+    setState(() {
+      _load(
+        inputFromStockItem(found, _buildInput(), rateFor: state.stoneRateFor),
+      );
+      _makingAuto = false;
+      _purityDefaulted = false;
+      _uncertain.clear();
+      _missing.clear();
+      _errors.clear();
+    });
+    _snack(
+      'Filled from stock: $tag · ${found['item_name'] ?? ''}'
+      '${(found['supplier_name'] ?? '').toString().isEmpty ? '' : ' · ${found['supplier_name']}'}',
+    );
+  }
 
   FieldState _stateOf(String key) => _missing.contains(key)
       ? FieldState.missing
@@ -955,9 +1005,35 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
           controller: _c[key],
           onChanged: (_) => _edited(key),
           style: const TextStyle(fontSize: 17),
+          // Tag number: Enter looks it up in the shop's stock.
+          textInputAction: key == 'tagNumber' ? TextInputAction.search : null,
+          textCapitalization: key == 'tagNumber'
+              ? TextCapitalization.characters
+              : TextCapitalization.none,
+          onSubmitted: key == 'tagNumber' ? (_) => _lookupTag() : null,
           decoration: InputDecoration(
             labelText: label,
             errorText: _errors[key],
+            helperText: key == 'tagNumber'
+                ? 'Press Enter to fill in from the shop stock'
+                : null,
+            suffixIcon: key != 'tagNumber'
+                ? null
+                : _lookingUp
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : IconButton(
+                    key: const Key('tagLookup'),
+                    tooltip: 'Find this tag in the shop stock',
+                    icon: const Icon(Icons.manage_search),
+                    onPressed: _lookupTag,
+                  ),
             fillColor: st == FieldState.normal
                 ? AppColors.surface
                 : AppColors.warnSoft,

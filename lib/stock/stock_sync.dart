@@ -100,6 +100,23 @@ class StockServer {
     );
   }
 
+  /// The stock item with exactly this Tag No (supplier expanded), or null.
+  Future<Map<String, dynamic>?> stockItemByTag(String tag) async {
+    final t = tag.trim().toUpperCase().replaceAll('"', '');
+    if (t.isEmpty) return null;
+    final j = await _json(
+      _http.get(
+        _u('api/collections/stock_items/records', {
+          'filter': 'tag_no="$t"',
+          'expand': 'supplier',
+          'perPage': '1',
+        }),
+      ),
+    );
+    final items = j['items'] as List;
+    return items.isEmpty ? null : (items.first as Map).cast<String, dynamic>();
+  }
+
   /// Stock items whose Tag No (or item name / supplier) contains [query],
   /// with the total number of items on the PC.
   Future<({int total, List<Map<String, dynamic>> items})> findStockItems(

@@ -61,13 +61,22 @@ PocketBase 0.40.5.
 The home screen shows "Saved on the shop PC", or "Shop PC not reachable ·
 saved on this phone, sent later" (changes are sent when the PC is back).
 
-## Stock export (Excel)
+## Stock items
 
-Stock Reconciliation → list icon "Stock items" → **Import Excel** → pick the
-stock export (.xlsx) → check the summary → your name and PIN → Import.
-Items are created or updated by Tag No (importing a newer export updates
-them, never duplicates). Search by Tag No, item or supplier on the same
-screen. Edit suppliers' address and mobile in the admin panel.
+Stock Reconciliation → list icon "Stock items": search the `stock_items`
+table by Tag No, item or supplier and see each item's details. Items are
+added and updated on the PC (admin panel, or the stock-import step in
+`pb_hooks/stock_import.pb.js`, which needs a staff PIN); the app's Import
+Excel button was removed. Edit suppliers' address and mobile in the admin
+panel.
+
+## Tag lookup (Manual Jewellery Entry)
+
+Type the Tag No and press Enter (or tap the search icon): the app finds it
+in `stock_items` and fills in gross and gold weight, purity (from Gold Std,
+when the export has it), diamonds, stones / polki and making charges.
+Rates in the export are read like tag rate codes (diamond and polki × 100
+per ct, stones per piece); everything stays editable.
 
 ## Personal PINs
 

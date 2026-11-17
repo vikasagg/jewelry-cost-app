@@ -1,24 +1,18 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../app_state.dart';
 import '../../../core/money.dart';
-import '../../../stock/stock_import.dart';
 import '../../../stock/stock_sync.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import 'stock_dialogs.dart';
 
-/// The shop's stock item by item, from the stock export (Excel), kept on
-/// the shop PC: search by Tag No, and import a new export.
+/// The shop's stock item by item, kept on the shop PC: search by Tag No,
+/// item or supplier.
 class StockItemsScreen extends StatefulWidget {
-  const StockItemsScreen({super.key, this.pickExport});
-
-  /// For tests: returns the chosen .xlsx file's bytes.
-  final Future<Uint8List?> Function()? pickExport;
+  const StockItemsScreen({super.key});
 
   @override
   State<StockItemsScreen> createState() => _StockItemsScreenState();
@@ -46,10 +40,6 @@ class _StockItemsScreenState extends State<StockItemsScreen> {
     super.dispose();
   }
 
-  void _snack(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
-
   Future<void> _load() async {
     final server = _sync.server;
     if (server == null) return;
@@ -69,156 +59,6 @@ class _StockItemsScreenState extends State<StockItemsScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<Uint8List?> _pick() async {
-    if (widget.pickExport != null) return widget.pickExport!();
-    final files = await FilePicker.pickFiles(
-      dialogTitle: 'Stock export (.xlsx)',
-      type: FileType.custom,
-      allowedExtensions: const ['xlsx'],
-    );
-    if (files.isEmpty) return null;
-    return files.first.readAsBytes();
-  }
-
-  Future<void> _import() async {
-    final server = _sync.server;
-    if (server == null) return;
-    final bytes = await _pick();
-    if (bytes == null || !mounted) return;
-    final StockExport export;
-    try {
-      export = parseStockExport(bytes);
-    } on FormatException catch (e) {
-      _snack('This is not a stock export: ${e.message}');
-      return;
-    } catch (_) {
-      _snack('This file could not be read. Choose the .xlsx stock export.');
-      return;
-    }
-    if (export.items.isEmpty) {
-      _snack('No items with a Tag No in this file');
-      return;
-    }
-    final who = await _confirm(export);
-    if (who == null || !mounted) return;
-    setState(() => _loading = true);
-    try {
-      final r = await server.importStock(
-        export.items,
-        name: who.name,
-        pin: who.pin,
-      );
-      _snack(
-        'Imported: ${r.created} new, ${r.updated} updated'
-        '${r.suppliers == 0 ? '' : ', ${r.suppliers} new suppliers'}',
-      );
-      await _load();
-    } on StockServerException catch (e) {
-      _snack(e.message);
-    } catch (_) {
-      _snack('Shop PC not reachable — nothing was imported');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  /// Shows what will be imported and asks who is importing (with PIN).
-  Future<({String name, String pin})?> _confirm(StockExport e) {
-    final staff = _sync.staff;
-    final pin = TextEditingController();
-    var name = staff.length == 1 ? staff.first.name : '';
-    return showDialog<({String name, String pin})>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const Text('Import stock export'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '${e.items.length} items (by Tag No) · '
-                    '${e.suppliers.length} suppliers · '
-                    '${e.withoutSupplier} without supplier',
-                    key: const Key('importSummary'),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  if (e.duplicateTags.isNotEmpty || e.skipped > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        [
-                          if (e.duplicateTags.isNotEmpty)
-                            'Repeated Tag No (last row kept): '
-                                '${e.duplicateTags.take(8).join(', ')}',
-                          if (e.skipped > 0) '${e.skipped} rows without Tag No',
-                        ].join('\n'),
-                        style: const TextStyle(color: AppColors.warn),
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Items already on the PC are updated; new suppliers get '
-                    'the address Delhi and mobile 9717000000 (edit them in '
-                    'the admin panel).',
-                    style: TextStyle(color: AppColors.muted, fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  if (staff.isEmpty)
-                    TextField(
-                      key: const Key('importName'),
-                      onChanged: (v) => name = v.trim(),
-                      decoration: const InputDecoration(labelText: 'Your name'),
-                    )
-                  else
-                    DropdownButtonFormField<String>(
-                      key: const Key('importName'),
-                      initialValue: name.isEmpty ? null : name,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Your name'),
-                      items: [
-                        for (final s in staff)
-                          DropdownMenuItem(value: s.name, child: Text(s.name)),
-                      ],
-                      onChanged: (v) => setLocal(() => name = v ?? ''),
-                    ),
-                  TextField(
-                    key: const Key('importPin'),
-                    controller: pin,
-                    obscureText: true,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(8),
-                    ],
-                    decoration: const InputDecoration(labelText: 'Your PIN'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              key: const Key('importOk'),
-              onPressed: () {
-                if (name.isEmpty || pin.text.length < 4) return;
-                Navigator.pop(context, (name: name, pin: pin.text));
-              },
-              child: const Text('Import'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _details(Map<String, dynamic> it) {
@@ -383,12 +223,6 @@ class _StockItemsScreenState extends State<StockItemsScreen> {
                                   : AppColors.error,
                             ),
                           ),
-                        ),
-                        FilledButton.icon(
-                          key: const Key('importStockExport'),
-                          onPressed: _loading ? null : _import,
-                          icon: const Icon(Icons.upload_file),
-                          label: const Text('Import Excel'),
                         ),
                       ],
                     ),
