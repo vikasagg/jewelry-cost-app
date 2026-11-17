@@ -49,6 +49,19 @@ jobs:
       - name: Package server setup
         run: (cd server && zip -qr ../server-setup.zip .)
 
+      # Everything for a Windows shop PC in one zip: PocketBase, the app
+      # (pb_public), the tables and rules, and a start script.
+      - name: Package Windows shop PC bundle
+        run: |
+          mkdir -p shop-pc
+          curl -sSfL -o pb-win.zip \
+            https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/pocketbase_0.40.5_windows_amd64.zip
+          unzip -q pb-win.zip pocketbase.exe -d shop-pc
+          cp -r server/pb_migrations server/pb_hooks shop-pc/
+          cp -r build/web shop-pc/pb_public
+          cp tool/shop_pc/*.bat tool/shop_pc/README.txt shop-pc/
+          (cd shop-pc && zip -qr ../damiyaas-shop-pc-windows.zip .)
+
       - uses: actions/upload-artifact@v4
         with:
           name: jewellery-cost-calculator-apk
@@ -79,6 +92,7 @@ jobs:
           prerelease: ${{ steps.rel.outputs.prerelease }}
           make_latest: ${{ steps.rel.outputs.prerelease == 'false' }}
           files: |
+            damiyaas-shop-pc-windows.zip
             jewellery-cost-calculator.apk
             damiyaas-web-for-shop-pc.zip
             server-setup.zip

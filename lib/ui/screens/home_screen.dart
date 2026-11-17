@@ -4,12 +4,16 @@ import 'package:intl/intl.dart';
 
 import '../../app_state.dart';
 import '../../core/money.dart';
+import '../../metals/metal_prices.dart';
 import '../../models/purity.dart';
 import '../../stock/stock_models.dart';
+import '../../stock/stock_sync.dart';
 import '../theme.dart';
 import 'dashboard_screen.dart';
+import 'metals/metal_prices_screen.dart';
 import 'rate_setup_screen.dart';
 import 'reports/reports_screen.dart';
+import 'stock/stock_dialogs.dart';
 import 'stock/stock_home_screen.dart';
 
 /// "Royal Night" palette for the home screen only.
@@ -99,6 +103,22 @@ class HomeScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 14),
+                            ListenableBuilder(
+                              listenable: state.metalPrices,
+                              builder: (context, _) => _ModeCard(
+                                key: const Key('openMetalPrices'),
+                                filled: false,
+                                icon: Icons.currency_rupee,
+                                title: 'Gold & Silver',
+                                subtitle: _metalStatus(
+                                  state.metalPrices.byDate(
+                                    state.metalPrices.today,
+                                  ),
+                                ),
+                                onTap: () => open(const MetalPricesScreen()),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
                             _ModeCard(
                               key: const Key('openReports'),
                               filled: false,
@@ -108,14 +128,7 @@ class HomeScreen extends StatelessWidget {
                               onTap: () => open(const ReportsScreen()),
                             ),
                             const SizedBox(height: 16),
-                            const Text(
-                              'Works offline · Data stays on this phone',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: _Night.faint,
-                                fontSize: 14,
-                              ),
-                            ),
+                            _SyncStatus(sync: state.stockSync),
                           ],
                         ),
                       ),
@@ -130,6 +143,15 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  /// Today's prices at a glance, e.g. "Gold ₹1,30,000 · Silver ₹1,60,000".
+  static String _metalStatus(MetalPrice? p) {
+    if (p == null) return "Record today's prices";
+    return [
+      if (p.gold24Per10g != null) 'Gold ${rupees(p.gold24Per10g!)}',
+      if (p.silverPerKg != null) 'Silver ${rupees(p.silverPerKg!)}/kg',
+    ].join(' · ');
+  }
+
   /// Today's count at a glance, e.g. "Today: 9 of 14 counted · Draft".
   static String _stockStatus(DailyStock? d) {
     if (d == null) return 'Today: not started';
@@ -137,6 +159,65 @@ class HomeScreen extends StatelessWidget {
     return 'Today: ${counted.length} of ${stockItems.length} counted · '
         '${d.status.label}';
   }
+}
+
+/// Where everything is saved: the shop PC (with its state) or this phone
+/// only. Tap to set up or change the shop PC.
+class _SyncStatus extends StatelessWidget {
+  const _SyncStatus({required this.sync});
+  final StockSync sync;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: sync,
+    builder: (context, _) {
+      final (IconData icon, Color color, String text) = switch (sync.state) {
+        SyncState.off => (
+          Icons.phone_android,
+          _Night.faint,
+          'Saved on this phone only · tap to connect the shop PC',
+        ),
+        SyncState.syncing => (
+          Icons.sync,
+          _Night.sand,
+          'Saving to the shop PC…',
+        ),
+        SyncState.synced => (
+          Icons.cloud_done_outlined,
+          const Color(0xFF8FD19E),
+          'Saved on the shop PC'
+              '${sync.lastSync == null ? '' : ' · ${DateFormat('h:mm a').format(sync.lastSync!)}'}',
+        ),
+        SyncState.offline => (
+          Icons.cloud_off_outlined,
+          const Color(0xFFE8A39A),
+          'Shop PC not reachable · saved on this phone, sent later',
+        ),
+      };
+      return InkWell(
+        key: const Key('homeSync'),
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showServerDialog(context, sync),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  text,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: color, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// Espresso gradient, gold glow and a faint diamond lattice.

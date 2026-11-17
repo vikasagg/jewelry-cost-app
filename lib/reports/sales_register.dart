@@ -243,6 +243,9 @@ class SalesRegister {
 
 /// Saved registers, one per day, on this phone.
 class SalesRegisterBook extends ChangeNotifier {
+  /// Shows changes that arrived from the shop PC.
+  void refresh() => notifyListeners();
+
   SalesRegisterBook(this._store, {DateTime Function()? clock})
     : _clock = clock ?? DateTime.now;
 

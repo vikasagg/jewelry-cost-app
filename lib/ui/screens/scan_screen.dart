@@ -443,7 +443,7 @@ class _ScanScreenState extends State<ScanScreen> {
         title: Text(
           _preview == null ? 'Scan Jewellery Tag' : 'Extracted Details',
         ),
-        actions: const [HistoryAction(), RatesAction()],
+        actions: const [HistoryAction()],
       ),
       body: SafeArea(
         child: ResponsiveBody(

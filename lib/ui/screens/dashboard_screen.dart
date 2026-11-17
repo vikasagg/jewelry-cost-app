@@ -10,6 +10,7 @@ import '../widgets/common.dart';
 import 'bill_screen.dart';
 import 'details_form_screen.dart';
 import 'history_screen.dart';
+import 'metals/metal_prices_screen.dart';
 import 'rate_setup_screen.dart';
 import 'scan_screen.dart';
 
@@ -27,7 +28,7 @@ class DashboardScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const BrandLogo(size: 20),
-        actions: const [HistoryAction(), RatesAction()],
+        actions: const [HistoryAction()],
       ),
       body: SafeArea(
         child: ResponsiveBody(
@@ -37,8 +38,7 @@ class DashboardScreen extends StatelessWidget {
               if (rates != null)
                 _RatesCard(
                   rates: rates,
-                  onEdit: () =>
-                      _open(context, const RateSetupScreen(firstRun: false)),
+                  onEdit: () => _open(context, const MetalPricesScreen()),
                 ),
               const SizedBox(height: 14),
               // Primary action
@@ -90,11 +90,14 @@ class DashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               MenuTile(
-                icon: Icons.bar_chart_rounded,
-                title: 'Gold Rate Settings',
-                subtitle: 'Update current gold rates',
-                onTap: () =>
-                    _open(context, const RateSetupScreen(firstRun: false)),
+                key: const Key('tagRateCodes'),
+                icon: Icons.sell_outlined,
+                title: 'Tag Rate Codes',
+                subtitle: 'Multipliers for diamond, polki and stone codes',
+                onTap: () => _open(
+                  context,
+                  const RateSetupScreen(firstRun: false, goldRate: false),
+                ),
               ),
               const SizedBox(height: 10),
               MenuTile(
@@ -159,7 +162,12 @@ class _RatesCard extends StatelessWidget {
                   ),
                 ),
               ),
-              TextButton(onPressed: onEdit, child: const Text('Edit')),
+              TextButton.icon(
+                key: const Key('ratesInGoldSilver'),
+                onPressed: onEdit,
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Gold & Silver'),
+              ),
             ],
           ),
           const SizedBox(height: 4),

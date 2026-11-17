@@ -10,6 +10,7 @@ import '../../theme.dart';
 import '../../widgets/common.dart';
 import 'stock_count_screen.dart';
 import 'stock_dialogs.dart';
+import 'stock_items_screen.dart';
 
 /// Daily Stock Summary: today's count plus the stock history. Physical
 /// counts only — nothing here touches prices, gold rates or estimates.
@@ -60,6 +61,14 @@ class _StockHomeScreenState extends State<StockHomeScreen> {
           appBar: AppBar(
             title: const Text('Daily Stock Summary'),
             actions: [
+              IconButton(
+                key: const Key('stockItems'),
+                tooltip: 'Stock items (Tag No)',
+                icon: const Icon(Icons.list_alt),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const StockItemsScreen()),
+                ),
+              ),
               IconButton(
                 key: const Key('shopServer'),
                 tooltip: 'Shop PC (database)',

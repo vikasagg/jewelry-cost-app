@@ -504,9 +504,10 @@ Future<void> showServerDialog(BuildContext context, StockSync sync) async {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Stock counts are saved on this phone and shared through '
-                  'PocketBase on the shop PC. Enter the PC address shown by '
-                  'ipconfig, with port 8090.',
+                  'Everything (estimates, bills, stock counts, sales '
+                  'registers, gold & silver prices) is saved on this phone '
+                  'and on the shop PC (PocketBase). Enter the PC address '
+                  'shown by ipconfig, with port 8090.',
                   style: TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 10),

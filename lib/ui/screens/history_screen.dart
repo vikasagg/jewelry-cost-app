@@ -83,10 +83,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final records = state.history.search(_search.text);
     final total = state.history.all().length;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan History'),
-        actions: const [RatesAction()],
-      ),
+      appBar: AppBar(title: const Text('Scan History')),
       body: SafeArea(
         child: ResponsiveBody(
           child: Column(
