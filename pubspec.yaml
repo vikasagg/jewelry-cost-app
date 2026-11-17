@@ -49,6 +49,10 @@ dependencies:
   crypto: ^3.0.7
   printing: ^5.15.1
   http: ^1.6.0
+  file_picker: ^13.4.0
+  archive: ^4.7.1
+  xml: ^7.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

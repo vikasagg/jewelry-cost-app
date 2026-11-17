@@ -390,7 +390,7 @@ class _ResultScreenState extends State<ResultScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Cost Summary'),
-          actions: const [HistoryAction(), RatesAction()],
+          actions: const [HistoryAction()],
         ),
         body: SafeArea(
           child: ResponsiveBody(

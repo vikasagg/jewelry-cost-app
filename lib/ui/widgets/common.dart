@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../screens/history_screen.dart';
-import '../screens/rate_setup_screen.dart';
 import '../theme.dart';
 
 /// Parses user-typed numbers ("1,25,000", "₹ 7000", " 10.25 "). Returns null
@@ -36,20 +35,6 @@ class HistoryAction extends StatelessWidget {
     onPressed: () => Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const HistoryScreen())),
-  );
-}
-
-/// AppBar action that opens gold rate settings from any screen.
-class RatesAction extends StatelessWidget {
-  const RatesAction({super.key});
-
-  @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: 'Gold rate settings',
-    icon: const Icon(Icons.currency_rupee),
-    onPressed: () => Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RateSetupScreen(firstRun: false)),
-    ),
   );
 }
 

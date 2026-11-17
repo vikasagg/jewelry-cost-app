@@ -397,7 +397,8 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
     }
     final snapshot = _snapshot;
     if (snapshot == null) {
-      errors['purity'] = 'Save gold rates first';
+      errors['purity'] =
+          'Enter today\'s gold price first (home screen → Gold & Silver)';
     } else {
       for (final issue in AppScope.read(
         context,
@@ -454,7 +455,7 @@ class _DetailsFormScreenState extends State<DetailsFormScreen> {
               ? 'Review Scanned Details'
               : 'Manual Jewellery Entry',
         ),
-        actions: const [HistoryAction(), RatesAction()],
+        actions: const [HistoryAction()],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

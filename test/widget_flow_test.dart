@@ -75,6 +75,17 @@ void main() {
     expect(state.rates!.rateFor(Purity.k9), closeTo(3684.21, 0.01));
 
     expect(find.byKey(const Key('historyButton')), findsOneWidget);
+    // Gold rates are set on the home screen (Gold & Silver), not here.
+    expect(find.text('Gold Rate Settings'), findsNothing);
+    expect(find.byTooltip('Gold rate settings'), findsNothing);
+    expect(find.byKey(const Key('ratesInGoldSilver')), findsOneWidget);
+    // Tag rate codes stay: multipliers only, no gold rate field.
+    await tapKey(t, 'tagRateCodes');
+    expect(find.text('Tag Rate Codes'), findsOneWidget);
+    expect(find.byKey(const Key('rate_k24')), findsNothing);
+    expect(find.byKey(const Key('tagRateMultiplier_diamond')), findsOneWidget);
+    await t.pageBack();
+    await t.pumpAndSettle();
     await tapKey(t, 'manualEntry');
     // New entries get the next automatic tag number.
     expect(

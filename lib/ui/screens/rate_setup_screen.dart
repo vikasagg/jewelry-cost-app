@@ -10,10 +10,18 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'dashboard_screen.dart';
 
-/// First-run (and settings) screen for per-gram gold rates.
+/// First-run screen for per-gram gold rates (later they are set on the
+/// home screen, Gold & Silver), and the tag rate codes setting.
 class RateSetupScreen extends StatefulWidget {
-  const RateSetupScreen({super.key, required this.firstRun});
+  const RateSetupScreen({
+    super.key,
+    required this.firstRun,
+    this.goldRate = true,
+  });
   final bool firstRun;
+
+  /// False: only the multipliers for rate codes printed on tags.
+  final bool goldRate;
 
   @override
   State<RateSetupScreen> createState() => _RateSetupScreenState();
@@ -70,7 +78,9 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
   }
 
   Future<void> _save() async {
-    setState(() => _rateError = _validate(_rate24.text));
+    setState(
+      () => _rateError = widget.goldRate ? _validate(_rate24.text) : null,
+    );
     final m = {
       for (final k in StoneKind.values) k: parseNumber(_multipliers[k]!.text),
     };
@@ -87,12 +97,15 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     }
     setState(() => _saving = true);
     final state = AppScope.read(context);
-    final rates = GoldRates.fromBase24(
-      perGram24: parseNumber(_rate24.text)! / _perGrams,
-      updatedAt: state.now(),
-      quotedPerGrams: _perGrams,
-    );
-    await state.saveRates(rates);
+    if (widget.goldRate) {
+      await state.saveRates(
+        GoldRates.fromBase24(
+          perGram24: parseNumber(_rate24.text)! / _perGrams,
+          updatedAt: state.now(),
+          quotedPerGrams: _perGrams,
+        ),
+      );
+    }
     for (final k in StoneKind.values) {
       await state.setTagRateMultiplier(k, m[k]!);
     }
@@ -103,9 +116,13 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
       );
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Gold rates updated')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.goldRate ? 'Gold rates updated' : 'Tag rate codes updated',
+          ),
+        ),
+      );
       Navigator.of(context).pop();
     }
   }
@@ -116,7 +133,11 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.firstRun ? 'Welcome to ${Brand.name}' : 'Gold Rate Settings',
+          widget.firstRun
+              ? 'Welcome to ${Brand.name}'
+              : widget.goldRate
+              ? 'Gold Rate Settings'
+              : 'Tag Rate Codes',
         ),
         actions: const [HistoryAction()],
       ),
@@ -126,165 +147,169 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
-              const Text(
-                'Today\'s gold rates',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Enter today\'s 24K rate in ₹. The other purities are worked '
-                'out from it: 22K = 92%, 20K = 84%, 18K = 76%, 14K = 60%, '
-                '9K = 40% of the 24K rate.',
-                style: TextStyle(color: AppColors.muted, height: 1.4),
-              ),
-              if (rates != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.goldSoft,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.history, color: AppColors.goldDeep),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Last updated ${formatDateTime(rates.updatedAt)}',
-                        ),
-                      ),
-                    ],
-                  ),
+              if (widget.goldRate) ...[
+                const Text(
+                  'Today\'s gold rates',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600),
                 ),
-              ],
-              const SizedBox(height: 10),
-              const Text(
-                'Rates entered per',
-                style: TextStyle(color: AppColors.muted),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<int>(
-                  key: const Key('ratePerGrams'),
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: 10, label: Text('10 grams')),
-                    ButtonSegment(value: 1, label: Text('1 gram')),
-                  ],
-                  selected: {_perGrams},
-                  onSelectionChanged: (v) =>
-                      setState(() => _perGrams = v.first),
+                const SizedBox(height: 6),
+                const Text(
+                  'Enter today\'s 24K rate in ₹. The other purities are worked '
+                  'out from it: 22K = 92%, 20K = 84%, 18K = 76%, 14K = 60%, '
+                  '9K = 40% of the 24K rate.',
+                  style: TextStyle(color: AppColors.muted, height: 1.4),
                 ),
-              ),
-              const SizedBox(height: 10),
-              NumberField(
-                fieldKey: const Key('rate_k24'),
-                controller: _rate24,
-                label: '24K Gold rate',
-                prefix: '₹ ',
-                unit: _perGrams == 1 ? '/ gram' : '/ $_perGrams g',
-                errorText: _rateError,
-                onChanged: (_) => setState(() => _rateError = null),
-              ),
-              const SizedBox(height: 10),
-              Builder(
-                builder: (_) {
-                  final v = parseNumber(_rate24.text);
-                  final ok = v != null && !v.isNaN && v > 0;
-                  final unit = _perGrams == 1 ? 'g' : '$_perGrams g';
-                  return Column(
-                    key: const Key('derivedRates'),
-                    children: [
-                      for (final p in Purity.values.reversed)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              // Purity chip, as in the design.
-                              Container(
-                                width: 64,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.goldSoft,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      p.label,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.goldDeep,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${p.percentOf24}%',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.muted,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: p == Purity.k24
-                                        ? AppColors.surface
-                                        : AppColors.tile,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: AppColors.line),
-                                  ),
-                                  child: Text(
-                                    ok
-                                        ? formatInr(
-                                            (v * p.percentOf24).round() / 100,
-                                          )
-                                        : '—',
-                                    style: const TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'per $unit',
-                                style: const TextStyle(color: AppColors.muted),
-                              ),
-                            ],
+                if (rates != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.goldSoft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.history, color: AppColors.goldDeep),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Last updated ${formatDateTime(rates.updatedAt)}',
                           ),
                         ),
-                    ],
-                  );
-                },
-              ),
-              if (rates != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, top: 6),
-                  child: Text(
-                    'Saved 24K: ${formatInr(rates.quotedRateFor(Purity.k24)!)} / '
-                    '${rates.quoteUnit}'
-                    '${rates.quotedPerGrams == 1 ? '' : ' (${formatInr(rates.rateFor(Purity.k24)!)}/g)'}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.muted,
+                      ],
                     ),
                   ),
+                ],
+                const SizedBox(height: 10),
+                const Text(
+                  'Rates entered per',
+                  style: TextStyle(color: AppColors.muted),
                 ),
-              const SizedBox(height: 14),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<int>(
+                    key: const Key('ratePerGrams'),
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(value: 10, label: Text('10 grams')),
+                      ButtonSegment(value: 1, label: Text('1 gram')),
+                    ],
+                    selected: {_perGrams},
+                    onSelectionChanged: (v) =>
+                        setState(() => _perGrams = v.first),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                NumberField(
+                  fieldKey: const Key('rate_k24'),
+                  controller: _rate24,
+                  label: '24K Gold rate',
+                  prefix: '₹ ',
+                  unit: _perGrams == 1 ? '/ gram' : '/ $_perGrams g',
+                  errorText: _rateError,
+                  onChanged: (_) => setState(() => _rateError = null),
+                ),
+                const SizedBox(height: 10),
+                Builder(
+                  builder: (_) {
+                    final v = parseNumber(_rate24.text);
+                    final ok = v != null && !v.isNaN && v > 0;
+                    final unit = _perGrams == 1 ? 'g' : '$_perGrams g';
+                    return Column(
+                      key: const Key('derivedRates'),
+                      children: [
+                        for (final p in Purity.values.reversed)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                // Purity chip, as in the design.
+                                Container(
+                                  width: 64,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.goldSoft,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        p.label,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.goldDeep,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${p.percentOf24}%',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: p == Purity.k24
+                                          ? AppColors.surface
+                                          : AppColors.tile,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: AppColors.line),
+                                    ),
+                                    child: Text(
+                                      ok
+                                          ? formatInr(
+                                              (v * p.percentOf24).round() / 100,
+                                            )
+                                          : '—',
+                                      style: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'per $unit',
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                if (rates != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 6),
+                    child: Text(
+                      'Saved 24K: ${formatInr(rates.quotedRateFor(Purity.k24)!)} / '
+                      '${rates.quoteUnit}'
+                      '${rates.quotedPerGrams == 1 ? '' : ' (${formatInr(rates.rateFor(Purity.k24)!)}/g)'}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 14),
+              ],
               const SizedBox(height: 8),
               const Text(
                 'Rates printed on tags',
@@ -336,7 +361,11 @@ class _RateSetupScreenState extends State<RateSetupScreen> {
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.check),
                 label: Text(
-                  widget.firstRun ? 'Save Rates & Continue' : 'Save Rates',
+                  widget.firstRun
+                      ? 'Save Rates & Continue'
+                      : widget.goldRate
+                      ? 'Save Rates'
+                      : 'Save',
                 ),
               ),
             ],

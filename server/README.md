@@ -64,11 +64,14 @@ saved on this phone, sent later" (changes are sent when the PC is back).
 ## Stock items
 
 Stock Reconciliation → list icon "Stock items": search the `stock_items`
-table by Tag No, item or supplier and see each item's details. Items are
-added and updated on the PC (admin panel, or the stock-import step in
-`pb_hooks/stock_import.pb.js`, which needs a staff PIN); the app's Import
-Excel button was removed. Edit suppliers' address and mobile in the admin
-panel.
+table by Tag No, item or supplier and see each item's details.
+
+**Import the stock export:** on the same screen tap **Import stock from
+Excel** (the green spreadsheet icon, also at the top right), pick the
+`.xlsx` export, choose your name and enter your PIN. New Tag Nos are
+added, existing ones updated (never duplicated), and new suppliers get the
+address Delhi and mobile 9717000000. Run it again with a newer export at
+any time. Edit suppliers' address and mobile in the admin panel.
 
 ## Tag lookup (Manual Jewellery Entry)
 
