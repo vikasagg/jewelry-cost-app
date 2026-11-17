@@ -60,6 +60,9 @@ function check(app, rec, pin) {
 }
 
 module.exports = {
+  // For other hooks: the staff record, and a PIN check ({ok, status, message}).
+  find,
+  verify: check,
   set: (e) => {
     const body = e.requestInfo().body || {};
     const pin = String(body.pin || "");

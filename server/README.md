@@ -35,6 +35,12 @@ PocketBase 0.40.5.
      per register line
    * `metal_prices` — gold 24K per 10 g and silver per kg, per day
    * `settings` — the gold rate used by the Price Calculator, counters
+   * `stock_items` — the stock export, one row per item; **Tag No is
+     unique**. Columns follow the export (item, date, pcs, gross/net/
+     diamond/stone/gold weight, design, hallmark, labour, MRP, diamond and
+     stone details, supplier) plus `status` (in_stock)
+   * `suppliers` — every supplier in the export, linked from stock_items;
+     new suppliers get the address **Delhi** and mobile **9717000000**
 
    Each of these has `data` (the full record as the app keeps it) and
    `deleted`: a record deleted on a phone stays on the PC, marked deleted.
@@ -54,6 +60,14 @@ PocketBase 0.40.5.
 
 The home screen shows "Saved on the shop PC", or "Shop PC not reachable ·
 saved on this phone, sent later" (changes are sent when the PC is back).
+
+## Stock export (Excel)
+
+Stock Reconciliation → list icon "Stock items" → **Import Excel** → pick the
+stock export (.xlsx) → check the summary → your name and PIN → Import.
+Items are created or updated by Tag No (importing a newer export updates
+them, never duplicates). Search by Tag No, item or supplier on the same
+screen. Edit suppliers' address and mobile in the admin panel.
 
 ## Personal PINs
 

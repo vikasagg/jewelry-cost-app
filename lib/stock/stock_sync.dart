@@ -75,6 +75,57 @@ class StockServer {
     ),
   );
 
+  /// Sends a stock export to the PC (staff [name] and [pin] required):
+  /// items are created or updated by Tag No, missing suppliers added.
+  Future<({int created, int updated, int suppliers})> importStock(
+    List<Map<String, Object?>> items, {
+    required String name,
+    required String pin,
+  }) async {
+    final res = await _http
+        .post(
+          _u('api/damiyaas/stock-import'),
+          headers: _jsonHeaders,
+          body: jsonEncode({'name': name, 'pin': pin, 'items': items}),
+        )
+        .timeout(const Duration(minutes: 2));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw StockServerException(res.statusCode, res.body);
+    }
+    final j = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return (
+      created: (j['created'] as num).toInt(),
+      updated: (j['updated'] as num).toInt(),
+      suppliers: (j['suppliers'] as num).toInt(),
+    );
+  }
+
+  /// Stock items whose Tag No (or item name / supplier) contains [query],
+  /// with the total number of items on the PC.
+  Future<({int total, List<Map<String, dynamic>> items})> findStockItems(
+    String query,
+  ) async {
+    final q = query.trim().toUpperCase().replaceAll('"', '');
+    final j = await _json(
+      _http.get(
+        _u('api/collections/stock_items/records', {
+          'sort': 'tag_no',
+          'perPage': '50',
+          'expand': 'supplier',
+          if (q.isNotEmpty)
+            'filter': 'tag_no~"$q" || item_name~"$q" || supplier_name~"$q"',
+        }),
+      ),
+    );
+    return (
+      total: (j['totalItems'] as num?)?.toInt() ?? 0,
+      items: (j['items'] as List)
+          .cast<Map>()
+          .map((m) => m.cast<String, dynamic>())
+          .toList(),
+    );
+  }
+
   /// True when the server answers.
   Future<void> ping() => _json(_http.get(_u('api/health')));
 
@@ -344,6 +395,9 @@ class StockSync extends ChangeNotifier {
   bool get enabled => serverUrl.isNotEmpty;
 
   StockServer get _server => StockServer(serverUrl, client: _client);
+
+  /// The shop PC, when one is set up.
+  StockServer? get server => enabled ? _server : null;
 
   /// Staff from the server (kept for offline use), sorted by name.
   List<StaffMember> get staff {
