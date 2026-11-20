@@ -130,7 +130,8 @@ Future<Uint8List> renderRegisterPng(
     );
   }
 
-  // Totals: sales, exchanges, enquiries, bookings; by metal; customers.
+  // Totals: sales, exchanges, enquiries, bookings, deliveries; by metal;
+  // customers.
   int count(bool Function(SalesEntry) f) => r.entries.where(f).length;
   const sep = '   ·   ';
   final visits = [

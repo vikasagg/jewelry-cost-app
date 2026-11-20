@@ -71,6 +71,8 @@ void main() {
     await t.enterText(find.byKey(const Key('entryItem')), 'Chain');
     await t.tap(find.byKey(const Key('metal_gold')));
     await t.tap(find.byKey(const Key('entryType_RN')));
+    await t.tap(find.byKey(const Key('deal_delivered')));
+    await t.pumpAndSettle();
     await t.tap(find.byKey(const Key('deal_booking')));
     await t.tap(find.byKey(const Key('entryOk')));
     await t.pumpAndSettle();
@@ -324,6 +326,9 @@ void main() {
     expect(r('Booking G-Chain'), 'Gold · Chain · Booking');
     expect(r('S-payal order'), 'Silver · Payal · Booking');
     expect(r('Bali exchange'), 'Others · Bali · Exchange');
+    expect(r('G-Ring delivered'), 'Gold · Ring · Delivered');
+    expect(r('Delivery S-Payal'), 'Silver · Payal · Delivered');
+    expect(r('D-Set dlvd'), 'Diamond · Set · Delivered');
     expect(CustomerType.fromCode('R/N'), CustomerType.repeatNew);
     expect(CustomerType.fromCode('n'), CustomerType.newCustomer);
     expect(CustomerType.fromCode(''), CustomerType.repeat);
