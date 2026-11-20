@@ -31,7 +31,8 @@ enum Deal {
   sale('Sale'),
   exchange('Exchange'),
   enquiry('Enquiry'),
-  booking('Booking');
+  booking('Booking'),
+  delivered('Delivered');
 
   const Deal(this.label);
   final String label;
@@ -403,7 +404,7 @@ String _title(String t) => [
   Iterable<String> known = const [],
 }) {
   var t = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
-  // Enquiry or booking: the word can be anywhere ("Chain enquiry",
+  // Enquiry, booking or delivered: the word can be anywhere ("Chain enquiry",
   // "Booking G-Ring", "ring order").
   Deal? visit;
   final kept = <String>[];
@@ -414,6 +415,12 @@ String _title(String t) => [
         similarity(w, 'enquiry') >= 0.7 ||
         similarity(w, 'inquiry') >= 0.7) {
       visit = Deal.enquiry;
+    } else if (l.startsWith('deliver') ||
+        l.startsWith('dlv') ||
+        l == 'delvd' ||
+        similarity(w, 'delivered') >= 0.7 ||
+        similarity(w, 'delivery') >= 0.7) {
+      visit = Deal.delivered;
     } else if (l.startsWith('book') ||
         similarity(w, 'booking') >= 0.7 ||
         l == 'order' ||
