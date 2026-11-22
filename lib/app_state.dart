@@ -16,6 +16,7 @@ import 'pricing/pricing_engine.dart';
 import 'reports/sales_register.dart';
 import 'stock/stock_book.dart';
 import 'stock/stock_sync.dart';
+import 'swarn/swarn_os.dart';
 import 'sync/data_sync.dart';
 
 /// App-wide state: current gold rates, pricing defaults and history.
@@ -43,6 +44,7 @@ class AppState extends ChangeNotifier {
        stock = StockBook(store, clock: clock),
        sales = SalesRegisterBook(store, clock: clock),
        metalPrices = MetalPriceBook(store, clock: clock),
+       swarn = SwarnOs(store, client: httpClient),
        _clock = clock ?? DateTime.now {
     _current = _rates.load();
     stockSync = StockSync(
@@ -77,6 +79,9 @@ class AppState extends ChangeNotifier {
 
   /// Gold & Silver: the day's prices, day by day.
   final MetalPriceBook metalPrices;
+
+  /// Swarn-OS, the shop's jewellery inventory system (Fetch Price).
+  final SwarnOs swarn;
 
   /// Shares [stock] with the database on the shop PC.
   late final StockSync stockSync;

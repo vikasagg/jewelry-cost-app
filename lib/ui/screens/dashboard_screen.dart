@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'bill_screen.dart';
 import 'details_form_screen.dart';
+import 'fetch_price_screen.dart';
 import 'history_screen.dart';
 import 'metals/metal_prices_screen.dart';
 import 'rate_setup_screen.dart';
@@ -87,6 +88,14 @@ class DashboardScreen extends StatelessWidget {
                 title: 'Manual Jewellery Entry',
                 subtitle: 'Enter details manually',
                 onTap: () => _open(context, const DetailsFormScreen()),
+              ),
+              const SizedBox(height: 10),
+              MenuTile(
+                key: const Key('fetchPrice'),
+                icon: Icons.cloud_download_outlined,
+                title: 'Fetch Price',
+                subtitle: 'Tag number → price from Swarn-OS inventory',
+                onTap: () => _open(context, const FetchPriceScreen()),
               ),
               const SizedBox(height: 10),
               MenuTile(
